@@ -1,0 +1,11 @@
+# 이 저장소는 정적 대시보드(docs/index.html)만 공개합니다.
+# 원본 데이터·파이프라인·Streamlit 앱 소스는 로컬에만 보관하고 저장소에는 올리지 않습니다.
+/app.py
+/requirements.txt
+/run_dashboard.bat
+/README.md
+/.streamlit/
+/data/
+/tools/
+__pycache__/
+*.pyc
