@@ -17,6 +17,19 @@
   .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
   h1 { font-size: 28px; margin: 4px 0 6px; }
   .caption { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .link-row {
+    display: flex; align-items: center; gap: 10px; font-size: 13.5px;
+    background: #fff; border: 1px solid var(--grid); border-radius: 8px;
+    padding: 8px 14px; margin-bottom: 20px; width: fit-content;
+  }
+  .link-row a { color: #D6336C; text-decoration: none; }
+  .link-row a:hover { text-decoration: underline; }
+  .copy-btn {
+    border: 1px solid var(--grid); background: #F8F9FA; color: var(--font);
+    border-radius: 6px; padding: 3px 10px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .copy-btn:hover { background: #F1F3F5; }
+  .copy-btn.copied { background: #D3F9D8; border-color: #B2F2BB; color: #2B8A3E; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--grid); margin-bottom: 24px; flex-wrap: wrap; }
   .tab-btn {
     padding: 10px 16px; cursor: pointer; border: none; background: none; font-size: 15px;
@@ -61,6 +74,10 @@
   <h1>📊 CJ나눔재단 X 와일리 KPI 대시보드</h1>
   <div class="caption">데이터 기준: 2026년 08월 실적 (2026-03 ~ 2026-08 실측, 2026-09 ~ 2026-11 하반기 계획 반영) ·
     출처: CJ나눔재단X와일리_KPI 현황 (Google Sheets)</div>
+  <div class="link-row">
+    🔗 <a href="https://wooinho.github.io/cj-nanum-kpi-dashboard/" target="_blank" rel="noopener">https://wooinho.github.io/cj-nanum-kpi-dashboard/</a>
+    <button id="copyLinkBtn" class="copy-btn" type="button">링크 복사</button>
+  </div>
 
   <div class="tabs">
     <button class="tab-btn active" data-tab="t1">🎯 개요 — 목표 대비 달성률</button>
@@ -438,6 +455,29 @@ CPC(₩1,551)·프로필 방문(1,112건)이 동시에 개선된 시점과 정�
       document.getElementById(btn.dataset.tab).classList.add("active");
       window.dispatchEvent(new Event("resize"));
     });
+  });
+
+  document.getElementById("copyLinkBtn").addEventListener("click", function () {
+    var url = "https://wooinho.github.io/cj-nanum-kpi-dashboard/";
+    var btn = this;
+    function done() {
+      var original = "링크 복사";
+      btn.textContent = "✓ 복사됨";
+      btn.classList.add("copied");
+      setTimeout(function () { btn.textContent = original; btn.classList.remove("copied"); }, 1500);
+    }
+    function legacyCopy() {
+      var ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); } catch (e) { /* 복사 실패 시 조용히 무시 */ }
+      document.body.removeChild(ta);
+      done();
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(url).then(done).catch(legacyCopy);
+    } else {
+      legacyCopy();
+    }
   });
 </script>
 </body>
