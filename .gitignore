@@ -3,6 +3,7 @@
 /app.py
 /requirements.txt
 /run_dashboard.bat
+/publish_to_github.bat
 /README.md
 /.streamlit/
 /data/
