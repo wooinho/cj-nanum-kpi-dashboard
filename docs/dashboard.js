@@ -404,6 +404,56 @@
     });
   }
 
+  function insightIcon(rate) {
+    return rate >= 100 ? "🟢" : rate >= 90 ? "🟡" : "🔴";
+  }
+
+  function monthlyInsightRows(tables, channel, metric) {
+    const lad = {}, act = {};
+    tables.ladder.filter((d) => d.channel === channel && d.metric === metric).forEach((d) => { lad[d.month] = d.target_cumulative; });
+    tables.actual.filter((d) => d.channel === channel && d.metric === metric && d.month !== "2025_baseline").forEach((d) => { act[d.month] = d.actual_cumulative; });
+    const months = Object.keys(lad).filter((m) => m in act).sort();
+    const rows = [];
+    months.forEach((month) => {
+      const target = lad[month];
+      if (!target) return;
+      const value = act[month];
+      rows.push([month, target, value, (value / target) * 100]);
+    });
+    return rows;
+  }
+
+  function renderMonthlyInsights(tables) {
+    const order = [
+      { channel: "인스타그램", metric: "팔로워" }, { channel: "인스타그램", metric: "인게이지먼트" },
+      { channel: "유튜브", metric: "구독자" }, { channel: "유튜브", metric: "조회수" },
+    ];
+    let html = "";
+    order.forEach(({ channel, metric }) => {
+      const rows = monthlyInsightRows(tables, channel, metric);
+      if (!rows.length) {
+        html += `<div class="chart-half"><b>${channel} · ${metric}</b><div class="caption">월별 목표 데이터가 없습니다.</div></div>`;
+        return;
+      }
+      const worst = rows.reduce((m, r) => (r[3] < m[3] ? r : m), rows[0]);
+      const latest = rows[rows.length - 1];
+      let trend = "";
+      if (rows.length >= 2) {
+        const prev = rows[rows.length - 2][3];
+        trend = " · 전월 대비 " + (latest[3] > prev ? "개선 중 ⬆" : latest[3] < prev ? "악화 중 ⬇" : "동일");
+      }
+      const items = rows.map((r) => `<div class="insight-item">${insightIcon(r[3])} <b>${r[0]}</b>: 목표 ${fmt(r[1])} 대비 실적 ${fmt(r[2])} (${r[3].toFixed(0)}%)</div>`).join("");
+      html += `
+      <div class="chart-half insight-panel">
+        <b>${channel} · ${metric}</b>
+        <div class="insight-summary">${insightIcon(worst[3])} 최저 달성월 ${worst[0]} (${worst[3].toFixed(0)}%) ·
+          ${insightIcon(latest[3])} 최신 ${latest[0]} (${latest[3].toFixed(0)}%)${trend}</div>
+        <details><summary>월별 상세 보기</summary><div class="insight-list">${items}</div></details>
+      </div>`;
+    });
+    document.getElementById("insightPanelRow").innerHTML = html;
+  }
+
   function declineBoxHtml(rows, unitLabel) {
     const vals = rows.map((d) => d.actual_value);
     const declineMonths = [];
@@ -644,6 +694,7 @@
     opts = opts || {};
     renderKpiCards(tables.annual);
     renderCascadeCharts(tables);
+    renderMonthlyInsights(tables);
     renderTrendCharts(tables);
     renderCrossAnalysis(tables);
     renderRankChart(tables.annual);
