@@ -526,8 +526,14 @@ CPC(₩1,551)·프로필 방문(1,112건)이 동시에 개선된 시점과 정�
       document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
       document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
-      document.getElementById(btn.dataset.tab).classList.add("active");
+      var panel = document.getElementById(btn.dataset.tab);
+      panel.classList.add("active");
       window.dispatchEvent(new Event("resize"));
+      // display:none 상태였다가 보이게 된 차트는 컨테이너 폭을 잘못 기억하고 있을 수 있으므로
+      // 해당 탭 안의 Plotly 차트를 명시적으로 다시 리사이즈해 실제 폭에 맞춘다.
+      panel.querySelectorAll(".js-plotly-plot").forEach(function (gd) {
+        try { Plotly.Plots.resize(gd); } catch (e) { /* 아직 초기화 전이면 무시 */ }
+      });
     });
   });
 

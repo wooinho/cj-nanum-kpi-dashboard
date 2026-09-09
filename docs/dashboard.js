@@ -363,7 +363,10 @@
     if (title) layout.title = { text: title, x: 0.01, xanchor: "left", y: 0.98, yanchor: "top" };
     return layout;
   }
-  const PCFG = { displaylogo: false };
+  // responsive:true - 컨테이너 크기가 바뀌면(탭 전환, 창 크기 조절 등) ResizeObserver로 항상 다시 맞춤.
+  // 이게 없으면 최초 렌더링 시점의 컨테이너 폭으로 고정되어 버려서, 레이아웃이 나중에 자리잡을 때
+  // 실제보다 넓게 그려진 채 잘려 보이는 문제가 생길 수 있다.
+  const PCFG = { displaylogo: false, responsive: true };
 
   function filterSorted(rows, pred) {
     return rows.filter(pred).sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
