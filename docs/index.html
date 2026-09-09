@@ -521,19 +521,27 @@ CPC(₩1,551)·프로필 방문(1,112건)이 동시에 개선된 시점과 정�
 </div>
 
 <script>
+  // Plotly의 config.responsive=true는 ResizeObserver로 컨테이너 크기 변화에 맞춰 다시 그려주는게
+  // 원칙이지만, 같은 flex 행 안에서 차트 여러 개가 "순서대로" 초기화되는 정적 HTML 구조에서는(예:
+  // 2개짜리 chart-row에서 첫 번째 차트가 초기화되는 시점엔 아직 옆 카드가 DOM에 없어 그 순간 컨테이너
+  // 폭을 실제보다 넓게 측정해버리고, 이후 옆 카드가 추가되며 flex 폭이 줄어들어도 이 축소는 감지하지
+  // 못하는 경우가 있었다(cascade 차트에서 실측: 컨테이너 610px인데 레이아웃 폭은 700px로 고정). 그래서
+  // 전체 페이지 로드가 끝난 뒤 "현재 보이는" 모든 차트를 한 번씩 명시적으로 resize()해 확실히 맞춘다.
+  function resizeVisiblePlots() {
+    document.querySelectorAll(".tab-panel.active .js-plotly-plot").forEach(function (gd) {
+      try { Plotly.Plots.resize(gd); } catch (e) { /* 아직 초기화 전이면 무시 */ }
+    });
+  }
+  window.addEventListener("load", resizeVisiblePlots);
+  window.addEventListener("resize", resizeVisiblePlots);
+
   document.querySelectorAll(".tab-btn").forEach(function (btn) {
     btn.addEventListener("click", function () {
       document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.remove("active"); });
       document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.remove("active"); });
       btn.classList.add("active");
-      var panel = document.getElementById(btn.dataset.tab);
-      panel.classList.add("active");
-      window.dispatchEvent(new Event("resize"));
-      // display:none 상태였다가 보이게 된 차트는 컨테이너 폭을 잘못 기억하고 있을 수 있으므로
-      // 해당 탭 안의 Plotly 차트를 명시적으로 다시 리사이즈해 실제 폭에 맞춘다.
-      panel.querySelectorAll(".js-plotly-plot").forEach(function (gd) {
-        try { Plotly.Plots.resize(gd); } catch (e) { /* 아직 초기화 전이면 무시 */ }
-      });
+      document.getElementById(btn.dataset.tab).classList.add("active");
+      resizeVisiblePlots();
     });
   });
 
