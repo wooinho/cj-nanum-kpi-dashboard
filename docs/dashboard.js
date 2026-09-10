@@ -711,11 +711,74 @@
   // ---------------------------------------------------------------------
   // 전체 렌더 오케스트레이션
   // ---------------------------------------------------------------------
+  // ---------------------------------------------------------------------
+  // 개요 탭 기간(월별) 필터 - 캐스케이드 차트 + 월별 인사이트에만 적용
+  // ---------------------------------------------------------------------
+  let currentTables = null;
+
+  function getAvailableMonths(tables) {
+    const months = new Set();
+    tables.ladder.forEach((d) => months.add(d.month));
+    tables.actual.forEach((d) => { if (d.month !== "2025_baseline") months.add(d.month); });
+    return Array.from(months).sort();
+  }
+
+  function fillMonthSelect(sel, months, preferredValue) {
+    sel.innerHTML = months.map((m) => `<option value="${m}">${m}</option>`).join("");
+    sel.value = months.includes(preferredValue) ? preferredValue : months[months.length - 1];
+  }
+
+  function populatePeriodSelectors(tables) {
+    const startSel = document.getElementById("periodStart");
+    const endSel = document.getElementById("periodEnd");
+    if (!startSel || !endSel) return;
+    const months = getAvailableMonths(tables);
+    if (!months.length) return;
+    startSel.innerHTML = months.map((m) => `<option value="${m}">${m}</option>`).join("");
+    startSel.value = months[0];
+    endSel.innerHTML = months.map((m) => `<option value="${m}">${m}</option>`).join("");
+    endSel.value = months[months.length - 1];
+  }
+
+  function filterTablesByPeriod(tables, start, end) {
+    return Object.assign({}, tables, {
+      ladder: tables.ladder.filter((d) => d.month >= start && d.month <= end),
+      actual: tables.actual.filter((d) => d.month >= start && d.month <= end),
+    });
+  }
+
+  function applyPeriodFilter() {
+    const startSel = document.getElementById("periodStart");
+    const endSel = document.getElementById("periodEnd");
+    if (!currentTables || !startSel || !endSel || !startSel.value || !endSel.value) return;
+    const start = startSel.value, end = endSel.value;
+    const filtered = filterTablesByPeriod(currentTables, start, end);
+    renderCascadeCharts(filtered);
+    renderMonthlyInsights(filtered);
+    const caption = document.getElementById("periodCaption");
+    if (caption) caption.textContent = `📅 ${start} ~ ${end} 기간만 표시 중`;
+  }
+
+  function initPeriodFilter() {
+    const startSel = document.getElementById("periodStart");
+    const endSel = document.getElementById("periodEnd");
+    if (!startSel || !endSel) return;
+    startSel.addEventListener("change", function () {
+      // 종료월 선택지를 시작월 이후로 제한 (시작월 > 종료월이 되는 것을 방지)
+      const months = getAvailableMonths(currentTables).filter((m) => m >= startSel.value);
+      const prevEnd = endSel.value;
+      fillMonthSelect(endSel, months, prevEnd);
+      applyPeriodFilter();
+    });
+    endSel.addEventListener("change", applyPeriodFilter);
+  }
+
   function renderAll(tables, opts) {
     opts = opts || {};
+    currentTables = tables;
     renderKpiCards(tables.annual);
-    renderCascadeCharts(tables);
-    renderMonthlyInsights(tables);
+    populatePeriodSelectors(tables);
+    applyPeriodFilter();
     renderTrendCharts(tables);
     renderCrossAnalysis(tables);
     renderRankChart(tables.annual);
@@ -866,6 +929,7 @@
     originalDiagnosisHTML = document.getElementById("diagnosisContent").innerHTML;
     originalPrescriptionHTML = document.getElementById("prescriptionContent").innerHTML;
     initCommentEditing();
+    initPeriodFilter();
 
     document.getElementById("xlsxFileInput").addEventListener("change", function (e) {
       const file = e.target.files[0];
@@ -906,6 +970,14 @@
       document.getElementById("revertBtn").hidden = true;
       showStatus("↩ 원본 데이터로 되돌렸습니다.", "ok");
     });
+
+    // 최초 페이지 로드시 캐스케이드/인사이트는 Python이 이미 정적으로 그려뒀지만, 기간 선택 드롭다운
+    // 자체는 JS가 채워야 하므로 원본 데이터로 한 번 초기화한다 (내용은 동일하게 다시 그려짐).
+    if (window.__BASELINE_TABLES__) {
+      currentTables = window.__BASELINE_TABLES__;
+      populatePeriodSelectors(currentTables);
+      applyPeriodFilter();
+    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
