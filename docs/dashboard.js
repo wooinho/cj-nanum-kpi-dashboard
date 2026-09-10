@@ -620,6 +620,18 @@
     return notes;
   }
 
+  function makeItemHtml(icon, num, numSuffix, title, bodyHtml) {
+    return `<div class="item">
+    <div class="item-head">
+      <span class="item-icon">${icon}</span>
+      <span class="item-num">${num}${numSuffix}</span>
+      <span class="item-title">${title}</span>
+      <button class="item-del" type="button" hidden title="이 항목 삭제">✕</button>
+    </div>
+    <p class="item-body">${bodyHtml}</p>
+  </div>`;
+  }
+
   function generateDiagnosis(annual) {
     const ranked = sortByKey(annual, (r) => r.annual_progress_rate);
     let html = "";
@@ -627,14 +639,14 @@
       const rate = row.annual_progress_rate;
       const icon = rate >= 0.95 ? "🟢" : rate >= 0.8 ? "🟡" : "🔴";
       const gap = row.annual_target - row.actual_cumulative;
-      html += `<h4>${icon} ${i + 1}. ${row.channel} · ${row.metric} — 연간 진척률 ${pct(rate, 0)}</h4>`;
-      html += `<p>누적 실적 ${fmt(row.actual_cumulative)} / 연간 목표 ${fmt(row.annual_target)} (${pct(rate, 0)}). `;
-      html += gap > 0 ? `잔여 ${fmt(gap)}이 남아 있습니다. ` : `목표를 ${fmt(-gap)} 초과 달성했습니다. `;
-      html += `월간 목표(캐스케이드) 대비로는 ${pct(row.monthly_progress_rate, 0)} 수준입니다. `;
-      if (rate < 0.8) html += `<strong>목표 대비 뒤처져 있어 우선 점검이 필요합니다.</strong>`;
-      else if (rate > 1.1) html += `목표를 크게 초과했다면, 특정 월에 성과가 쏠려있지 않은지 함께 확인해보는 것이 좋습니다.`;
-      else html += `대체로 정상 궤도 위에 있습니다.`;
-      html += `</p>`;
+      const title = `${row.channel} · ${row.metric} — 연간 진척률 ${pct(rate, 0)}`;
+      let body = `누적 실적 ${fmt(row.actual_cumulative)} / 연간 목표 ${fmt(row.annual_target)} (${pct(rate, 0)}). `;
+      body += gap > 0 ? `잔여 ${fmt(gap)}이 남아 있습니다. ` : `목표를 ${fmt(-gap)} 초과 달성했습니다. `;
+      body += `월간 목표(캐스케이드) 대비로는 ${pct(row.monthly_progress_rate, 0)} 수준입니다. `;
+      if (rate < 0.8) body += `<strong>목표 대비 뒤처져 있어 우선 점검이 필요합니다.</strong>`;
+      else if (rate > 1.1) body += `목표를 크게 초과했다면, 특정 월에 성과가 쏠려있지 않은지 함께 확인해보는 것이 좋습니다.`;
+      else body += `대체로 정상 궤도 위에 있습니다.`;
+      html += makeItemHtml(icon, i + 1, ".", title, body);
     });
     return html;
   }
@@ -645,26 +657,32 @@
     const bs = {};
     tables.budgetSummary.forEach((r) => { bs[r.item] = r.value; });
 
-    let html = `<h4>1) 잔여 예산 재배분 검토</h4><p>`;
+    const items = [];
+
+    let body1;
     if (bs["26년 총예산"] != null && worst && best) {
-      html += `가장 뒤처진 지표는 <b>${worst.channel} · ${worst.metric}</b>(${pct(worst.annual_progress_rate, 0)}), 가장 앞서 있는 지표는
+      body1 = `가장 뒤처진 지표는 <b>${worst.channel} · ${worst.metric}</b>(${pct(worst.annual_progress_rate, 0)}), 가장 앞서 있는 지표는
       <b>${best.channel} · ${best.metric}</b>(${pct(best.annual_progress_rate, 0)})입니다. 연간 총예산 ${fmtWon(bs["26년 총예산"])} 중
-      아직 집행되지 않은 잔여 예산이 있다면, 초과 달성 중인 지표에 배정된 몫 일부를 뒤처진 지표 쪽으로 전환하는 것을 검토해볼 만합니다.</p>`;
+      아직 집행되지 않은 잔여 예산이 있다면, 초과 달성 중인 지표에 배정된 몫 일부를 뒤처진 지표 쪽으로 전환하는 것을 검토해볼 만합니다.`;
     } else {
-      html += `예산 데이터가 부족해 구체적인 배분 제안은 생략합니다.</p>`;
+      body1 = `예산 데이터가 부족해 구체적인 배분 제안은 생략합니다.`;
     }
+    items.push(["잔여 예산 재배분 검토", body1]);
 
     const contentNotes = contentDependencyNotes(tables.actual);
-    html += `<h4>2) 콘텐츠/캠페인 의존도 리스크</h4>`;
-    html += contentNotes.length ? `<ul>${contentNotes.join("")}</ul>` : `<p>특정 월에 쏠린 성과는 발견되지 않았습니다.</p>`;
+    items.push(["콘텐츠/캠페인 의존도 리스크",
+      contentNotes.length ? `<ul>${contentNotes.join("")}</ul>` : `특정 월에 쏠린 성과는 발견되지 않았습니다.`]);
 
     const anomalyNotes = [...momAnomalyNotes(tables.igPerf, "인스타그램"), ...momAnomalyNotes(tables.ytPerf, "유튜브")];
-    html += `<h4>3) 월별 효율지표 급변 감지 (전월 대비 ±50% 이상)</h4>`;
-    html += anomalyNotes.length ? `<ul>${anomalyNotes.join("")}</ul>` : `<p>전월 대비 50% 이상 급변한 효율지표는 발견되지 않았습니다.</p>`;
+    items.push(["월별 효율지표 급변 감지 (전월 대비 ±50% 이상)",
+      anomalyNotes.length ? `<ul>${anomalyNotes.join("")}</ul>` : `전월 대비 50% 이상 급변한 효율지표는 발견되지 않았습니다.`]);
 
-    html += `<h4>4) 하반기 단가 가정 재검증</h4>
-    <p>하반기 집행 계획(참고 테이블의 unit_cost_note)에 적힌 단가 가정과 실제 집행 단가(CPE/CPV 등)를 비교해, 계획대로 예산을
-    소진했을 때 목표한 물량을 실제로 달성할 수 있는지 재확인하는 것을 권장합니다.</p>`;
+    items.push(["하반기 단가 가정 재검증",
+      `하반기 집행 계획(참고 테이블의 unit_cost_note)에 적힌 단가 가정과 실제 집행 단가(CPE/CPV 등)를 비교해, 계획대로 예산을
+      소진했을 때 목표한 물량을 실제로 달성할 수 있는지 재확인하는 것을 권장합니다.`]);
+
+    let html = "";
+    items.forEach((it, i) => { html += makeItemHtml("", i + 1, ")", it[0], it[1]); });
     return html;
   }
 
@@ -722,9 +740,132 @@
     el.className = "upload-status " + kind;
   }
 
+  // ---------------------------------------------------------------------
+  // 진단/처방 코멘트를 페이지에서 바로 편집 ("여기서 바로 수정하기" 버튼)
+  // ---------------------------------------------------------------------
+  function renumberItems() {
+    document.querySelectorAll("#diagnosisContent .item").forEach((el, i) => {
+      const n = el.querySelector(".item-num");
+      if (n) n.textContent = (i + 1) + ".";
+    });
+    document.querySelectorAll("#prescriptionContent .item").forEach((el, i) => {
+      const n = el.querySelector(".item-num");
+      if (n) n.textContent = (i + 1) + ")";
+    });
+  }
+
+  function makeEditableItemEl(kind) {
+    const div = document.createElement("div");
+    div.className = "item";
+    div.innerHTML = `<div class="item-head">
+      <span class="item-icon" contenteditable="true">${kind === "diag" ? "⚪" : ""}</span>
+      <span class="item-num"></span>
+      <span class="item-title" contenteditable="true">새 항목 제목을 입력하세요</span>
+      <button class="item-del" type="button" title="이 항목 삭제">✕</button>
+    </div>
+    <p class="item-body" contenteditable="true">내용을 입력하세요.</p>`;
+    return div;
+  }
+
+  function setCommentsEditable(state) {
+    document.querySelectorAll(
+      "#diagnosisContent .item-icon, #diagnosisContent .item-title, #diagnosisContent .item-body, " +
+      "#prescriptionContent .item-icon, #prescriptionContent .item-title, #prescriptionContent .item-body"
+    ).forEach((el) => { el.contentEditable = state ? "true" : "false"; });
+    document.querySelectorAll("#diagnosisContent .item-del, #prescriptionContent .item-del").forEach((btn) => { btn.hidden = !state; });
+    document.getElementById("t4").classList.toggle("editing", state);
+    document.getElementById("editToolbar").hidden = !state;
+    document.getElementById("startEditBtn").hidden = state;
+  }
+
+  function buildSheetPasteText() {
+    const lines = ["구분\t아이콘\t제목\t내용"];
+    document.querySelectorAll("#diagnosisContent .item").forEach((el) => {
+      lines.push(["진단", el.querySelector(".item-icon").textContent.trim(),
+        el.querySelector(".item-title").textContent.trim(),
+        el.querySelector(".item-body").textContent.trim()].join("\t"));
+    });
+    document.querySelectorAll("#prescriptionContent .item").forEach((el) => {
+      lines.push(["처방", el.querySelector(".item-icon").textContent.trim(),
+        el.querySelector(".item-title").textContent.trim(),
+        el.querySelector(".item-body").textContent.trim()].join("\t"));
+    });
+    return lines.join("\n");
+  }
+
+  function copyPlainText(text, onDone) {
+    function legacyCopy() {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) { /* 무시 */ }
+      document.body.removeChild(ta);
+      onDone();
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(onDone).catch(legacyCopy);
+    } else {
+      legacyCopy();
+    }
+  }
+
+  let diagEditSnapshot = null;
+  let presEditSnapshot = null;
+
+  function initCommentEditing() {
+    const startBtn = document.getElementById("startEditBtn");
+    if (!startBtn) return;
+
+    renumberItems();
+
+    startBtn.addEventListener("click", function () {
+      diagEditSnapshot = document.getElementById("diagnosisContent").innerHTML;
+      presEditSnapshot = document.getElementById("prescriptionContent").innerHTML;
+      setCommentsEditable(true);
+    });
+
+    document.getElementById("addDiagBtn").addEventListener("click", function () {
+      document.getElementById("diagnosisContent").appendChild(makeEditableItemEl("diag"));
+      renumberItems();
+    });
+    document.getElementById("addPresBtn").addEventListener("click", function () {
+      document.getElementById("prescriptionContent").appendChild(makeEditableItemEl("pres"));
+      renumberItems();
+    });
+
+    document.addEventListener("click", function (e) {
+      if (e.target.classList.contains("item-del")) {
+        e.target.closest(".item").remove();
+        renumberItems();
+      }
+    });
+
+    document.getElementById("doneEditBtn").addEventListener("click", function () {
+      setCommentsEditable(false);
+    });
+
+    document.getElementById("cancelEditBtn").addEventListener("click", function () {
+      if (diagEditSnapshot !== null) document.getElementById("diagnosisContent").innerHTML = diagEditSnapshot;
+      if (presEditSnapshot !== null) document.getElementById("prescriptionContent").innerHTML = presEditSnapshot;
+      renumberItems();
+      setCommentsEditable(false);
+    });
+
+    document.getElementById("copyForSheetBtn").addEventListener("click", function () {
+      const btn = this;
+      const original = btn.textContent;
+      copyPlainText(buildSheetPasteText(), function () {
+        btn.textContent = "✓ 복사됨 — 구글시트에 붙여넣으세요";
+        setTimeout(function () { btn.textContent = original; }, 2500);
+      });
+    });
+  }
+
   function init() {
     originalDiagnosisHTML = document.getElementById("diagnosisContent").innerHTML;
     originalPrescriptionHTML = document.getElementById("prescriptionContent").innerHTML;
+    initCommentEditing();
 
     document.getElementById("xlsxFileInput").addEventListener("change", function (e) {
       const file = e.target.files[0];
@@ -737,6 +878,8 @@
           const wb = XLSX.read(data, { type: "array", cellDates: true });
           const tables = parseWorkbook(wb);
           renderAll(tables, { autoDiagnosis: true });
+          setCommentsEditable(false);
+          renumberItems();
           document.getElementById("revertBtn").hidden = false;
           document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (업로드한 데이터 기준)";
           showStatus(`✅ "${file.name}" 데이터로 이 브라우저에서만 갱신했습니다. 진단·처방 문구는 자동 생성된 일반 분석입니다
@@ -757,6 +900,8 @@
       renderAll(window.__BASELINE_TABLES__, { autoDiagnosis: false });
       document.getElementById("diagnosisContent").innerHTML = originalDiagnosisHTML;
       document.getElementById("prescriptionContent").innerHTML = originalPrescriptionHTML;
+      setCommentsEditable(false);
+      renumberItems();
       document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (2026년 08월 기준)";
       document.getElementById("revertBtn").hidden = true;
       showStatus("↩ 원본 데이터로 되돌렸습니다.", "ok");
