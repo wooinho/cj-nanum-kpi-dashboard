@@ -620,10 +620,12 @@
     return notes;
   }
 
-  function makeItemHtml(icon, num, numSuffix, title, bodyHtml) {
-    return `<div class="item">
+  function makeItemHtml(icon, num, numSuffix, title, bodyHtml, month) {
+    month = month || ""; // 비우면 "전체" 취급 (자동 생성 진단/처방은 특정 월에 묶지 않음)
+    return `<div class="item" data-month="${month}">
     <div class="item-head">
       <span class="item-icon">${icon}</span>
+      <span class="item-month" title="해당 월 (비우면 모든 월에 표시)">${month}</span>
       <span class="item-num">${num}${numSuffix}</span>
       <span class="item-title">${title}</span>
       <button class="item-del" type="button" hidden title="이 항목 삭제">✕</button>
@@ -807,21 +809,77 @@
   // 진단/처방 코멘트를 페이지에서 바로 편집 ("여기서 바로 수정하기" 버튼)
   // ---------------------------------------------------------------------
   function renumberItems() {
-    document.querySelectorAll("#diagnosisContent .item").forEach((el, i) => {
+    // 필터링으로 숨겨진([hidden]) 항목은 번호 매기기에서 제외 — 화면에 보이는 항목만 1., 2., ... 로 이어진다.
+    let i = 0;
+    document.querySelectorAll("#diagnosisContent .item").forEach((el) => {
       const n = el.querySelector(".item-num");
-      if (n) n.textContent = (i + 1) + ".";
+      if (n && !el.hidden) n.textContent = (++i) + ".";
     });
-    document.querySelectorAll("#prescriptionContent .item").forEach((el, i) => {
+    i = 0;
+    document.querySelectorAll("#prescriptionContent .item").forEach((el) => {
       const n = el.querySelector(".item-num");
-      if (n) n.textContent = (i + 1) + ")";
+      if (n && !el.hidden) n.textContent = (++i) + ")";
     });
   }
 
-  function makeEditableItemEl(kind) {
+  // ---------------------------------------------------------------------
+  // 진단/처방 항목을 월별로 필터링하는 드롭다운 ("월 선택")
+  // ---------------------------------------------------------------------
+  function getItemMonth(el) {
+    const m = el.querySelector(".item-month");
+    return m ? m.textContent.trim() : "";
+  }
+
+  function getAvailableItemMonths() {
+    const months = new Set();
+    document.querySelectorAll("#diagnosisContent .item, #prescriptionContent .item").forEach((el) => {
+      const m = getItemMonth(el);
+      if (m) months.add(m);
+    });
+    return Array.from(months).sort();
+  }
+
+  function populateDiagMonthFilter() {
+    const sel = document.getElementById("diagMonthFilter");
+    if (!sel) return;
+    const prev = sel.value;
+    const months = getAvailableItemMonths();
+    sel.innerHTML = ['<option value="">전체 (모든 월)</option>']
+      .concat(months.map((m) => `<option value="${m}">${m}</option>`)).join("");
+    sel.value = months.includes(prev) ? prev : "";
+  }
+
+  function applyDiagMonthFilter() {
+    const sel = document.getElementById("diagMonthFilter");
+    if (!sel) return;
+    const target = sel.value; // "" = 전체
+    document.querySelectorAll("#diagnosisContent .item, #prescriptionContent .item").forEach((el) => {
+      const m = getItemMonth(el);
+      // 월이 비어 있는 항목("전체"로 등록된 항목)은 어떤 필터에서도 항상 보이고,
+      // 특정 월이 지정된 항목은 그 월이 선택되었을 때만 보인다. 필터 자체가 "전체"면 다 보인다.
+      el.hidden = !(target === "" || m === "" || m === target);
+    });
+    renumberItems();
+    const caption = document.getElementById("diagMonthCaption");
+    if (caption) caption.textContent = target ? `📅 ${target} 관련 항목만 표시 중 (월 미지정 항목은 항상 표시)` : "";
+  }
+
+  function initDiagMonthFilter() {
+    const sel = document.getElementById("diagMonthFilter");
+    if (!sel) return;
+    populateDiagMonthFilter();
+    applyDiagMonthFilter();
+    sel.addEventListener("change", applyDiagMonthFilter);
+  }
+
+  function makeEditableItemEl(kind, defaultMonth) {
+    const month = defaultMonth || "";
     const div = document.createElement("div");
     div.className = "item";
+    div.setAttribute("data-month", month);
     div.innerHTML = `<div class="item-head">
       <span class="item-icon" contenteditable="true">${kind === "diag" ? "⚪" : ""}</span>
+      <span class="item-month" contenteditable="true" title="해당 월 (예: 2026-09, 비우면 모든 월에 표시)">${month}</span>
       <span class="item-num"></span>
       <span class="item-title" contenteditable="true">새 항목 제목을 입력하세요</span>
       <button class="item-del" type="button" title="이 항목 삭제">✕</button>
@@ -832,8 +890,8 @@
 
   function setCommentsEditable(state) {
     document.querySelectorAll(
-      "#diagnosisContent .item-icon, #diagnosisContent .item-title, #diagnosisContent .item-body, " +
-      "#prescriptionContent .item-icon, #prescriptionContent .item-title, #prescriptionContent .item-body"
+      "#diagnosisContent .item-icon, #diagnosisContent .item-month, #diagnosisContent .item-title, #diagnosisContent .item-body, " +
+      "#prescriptionContent .item-icon, #prescriptionContent .item-month, #prescriptionContent .item-title, #prescriptionContent .item-body"
     ).forEach((el) => { el.contentEditable = state ? "true" : "false"; });
     document.querySelectorAll("#diagnosisContent .item-del, #prescriptionContent .item-del").forEach((btn) => { btn.hidden = !state; });
     document.getElementById("t4").classList.toggle("editing", state);
@@ -842,14 +900,16 @@
   }
 
   function buildSheetPasteText() {
-    const lines = ["구분\t아이콘\t제목\t내용"];
+    // 화면에 숨겨진(다른 월로 필터링된) 항목도 빠짐없이 포함한다 — querySelectorAll은 hidden 여부와 무관하게
+    // 모든 .item을 가져온다.
+    const lines = ["구분\t월\t아이콘\t제목\t내용"];
     document.querySelectorAll("#diagnosisContent .item").forEach((el) => {
-      lines.push(["진단", el.querySelector(".item-icon").textContent.trim(),
+      lines.push(["진단", getItemMonth(el), el.querySelector(".item-icon").textContent.trim(),
         el.querySelector(".item-title").textContent.trim(),
         el.querySelector(".item-body").textContent.trim()].join("\t"));
     });
     document.querySelectorAll("#prescriptionContent .item").forEach((el) => {
-      lines.push(["처방", el.querySelector(".item-icon").textContent.trim(),
+      lines.push(["처방", getItemMonth(el), el.querySelector(".item-icon").textContent.trim(),
         el.querySelector(".item-title").textContent.trim(),
         el.querySelector(".item-body").textContent.trim()].join("\t"));
     });
@@ -889,30 +949,45 @@
     });
 
     document.getElementById("addDiagBtn").addEventListener("click", function () {
-      document.getElementById("diagnosisContent").appendChild(makeEditableItemEl("diag"));
-      renumberItems();
+      const curMonth = document.getElementById("diagMonthFilter") ? document.getElementById("diagMonthFilter").value : "";
+      document.getElementById("diagnosisContent").appendChild(makeEditableItemEl("diag", curMonth));
+      populateDiagMonthFilter();
+      applyDiagMonthFilter();
     });
     document.getElementById("addPresBtn").addEventListener("click", function () {
-      document.getElementById("prescriptionContent").appendChild(makeEditableItemEl("pres"));
-      renumberItems();
+      const curMonth = document.getElementById("diagMonthFilter") ? document.getElementById("diagMonthFilter").value : "";
+      document.getElementById("prescriptionContent").appendChild(makeEditableItemEl("pres", curMonth));
+      populateDiagMonthFilter();
+      applyDiagMonthFilter();
     });
 
     document.addEventListener("click", function (e) {
       if (e.target.classList.contains("item-del")) {
         e.target.closest(".item").remove();
-        renumberItems();
+        populateDiagMonthFilter();
+        applyDiagMonthFilter();
       }
     });
 
+    // 월 텍스트를 직접 고칠 수도 있으므로(contenteditable), 편집 중 월 입력을 마치면(blur) 드롭다운 갱신
+    document.addEventListener("blur", function (e) {
+      if (e.target.classList && e.target.classList.contains("item-month")) {
+        populateDiagMonthFilter();
+      }
+    }, true);
+
     document.getElementById("doneEditBtn").addEventListener("click", function () {
       setCommentsEditable(false);
+      populateDiagMonthFilter();
+      applyDiagMonthFilter();
     });
 
     document.getElementById("cancelEditBtn").addEventListener("click", function () {
       if (diagEditSnapshot !== null) document.getElementById("diagnosisContent").innerHTML = diagEditSnapshot;
       if (presEditSnapshot !== null) document.getElementById("prescriptionContent").innerHTML = presEditSnapshot;
-      renumberItems();
       setCommentsEditable(false);
+      populateDiagMonthFilter();
+      applyDiagMonthFilter();
     });
 
     document.getElementById("copyForSheetBtn").addEventListener("click", function () {
@@ -930,6 +1005,7 @@
     originalPrescriptionHTML = document.getElementById("prescriptionContent").innerHTML;
     initCommentEditing();
     initPeriodFilter();
+    initDiagMonthFilter();
 
     document.getElementById("xlsxFileInput").addEventListener("change", function (e) {
       const file = e.target.files[0];
@@ -943,7 +1019,8 @@
           const tables = parseWorkbook(wb);
           renderAll(tables, { autoDiagnosis: true });
           setCommentsEditable(false);
-          renumberItems();
+          populateDiagMonthFilter();
+          applyDiagMonthFilter();
           document.getElementById("revertBtn").hidden = false;
           document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (업로드한 데이터 기준)";
           showStatus(`✅ "${file.name}" 데이터로 이 브라우저에서만 갱신했습니다. 진단·처방 문구는 자동 생성된 일반 분석입니다
@@ -965,7 +1042,8 @@
       document.getElementById("diagnosisContent").innerHTML = originalDiagnosisHTML;
       document.getElementById("prescriptionContent").innerHTML = originalPrescriptionHTML;
       setCommentsEditable(false);
-      renumberItems();
+      populateDiagMonthFilter();
+      applyDiagMonthFilter();
       document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (2026년 08월 기준)";
       document.getElementById("revertBtn").hidden = true;
       showStatus("↩ 원본 데이터로 되돌렸습니다.", "ok");
