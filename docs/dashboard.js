@@ -836,6 +836,13 @@
       const m = getItemMonth(el);
       if (m) months.add(m);
     });
+    // 아직 그 달에 등록된 항목이 하나도 없어도 미리 골라서 새 항목을 등록할 수 있도록, 실제 항목에 쓰인
+    // 연도(없으면 2026) 기준 1~12월을 항상 선택지에 포함시킨다. 다른 연도가 실제로 쓰였다면 그 값도
+    // 그대로 유지된다(위에서 이미 추가됨).
+    let year = "2026";
+    const firstMonth = Array.from(months).sort()[0];
+    if (firstMonth && /^\d{4}-\d{2}$/.test(firstMonth)) year = firstMonth.slice(0, 4);
+    for (let m = 1; m <= 12; m++) months.add(`${year}-${String(m).padStart(2, "0")}`);
     return Array.from(months).sort();
   }
 
