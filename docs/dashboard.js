@@ -1034,7 +1034,53 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // 화면 잠금 (로그인 가림막)
+  // 주의: 이건 "진짜 서버 인증"이 아니라 링크를 몰라도 캐주얼하게 못 열게 막는 수준의 가림막이다.
+  // 페이지 소스나 저장소 원본 파일(docs/index.html, dashboard.js)을 직접 열면 그대로 우회된다 —
+  // 정적 사이트(GitHub Pages)라 서버가 없어서 이 이상의 진짜 인증은 불가능하고, 담당자도 이 한계를
+  // 인지한 상태에서 "그래도 캐주얼한 접근 정도는 막아달라"고 선택한 방식이다.
+  // 비밀번호를 코드에 평문으로 남기지 않도록 "아이디:비밀번호" 문자열의 SHA-256 해시만 비교한다.
+  // ---------------------------------------------------------------------
+  const LOGIN_HASH = "cb90c5cf4c15bd1413e98f8e7634431b8eeae4b37aaf950f5b9c688502905b75";
+  const LOGIN_STORAGE_KEY = "cj_nanum_unlocked_v1";
+
+  async function sha256Hex(text) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  function initLoginGate() {
+    const gate = document.getElementById("loginGate");
+    const form = document.getElementById("loginForm");
+    if (!gate || !form) return;
+
+    let unlocked = false;
+    try { unlocked = localStorage.getItem(LOGIN_STORAGE_KEY) === "1"; } catch (e) { /* 저장소 접근 불가 시 무시 */ }
+    if (unlocked) { gate.hidden = true; return; }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const id = document.getElementById("loginId").value.trim();
+      const pw = document.getElementById("loginPw").value;
+      const errEl = document.getElementById("loginError");
+      sha256Hex(`${id}:${pw}`)
+        .catch(function () { return ""; }) // crypto.subtle을 못 쓰는 환경 등 — 그냥 오답 처리
+        .then(function (hash) {
+          if (hash && hash === LOGIN_HASH) {
+            gate.hidden = true;
+            errEl.hidden = true;
+            try { localStorage.setItem(LOGIN_STORAGE_KEY, "1"); } catch (ex) { /* 무시 */ }
+          } else {
+            errEl.hidden = false;
+            document.getElementById("loginPw").value = "";
+          }
+        });
+    });
+  }
+
   function init() {
+    initLoginGate();
     originalDiagnosisHTML = document.getElementById("diagnosisContent").innerHTML;
     originalPrescriptionHTML = document.getElementById("prescriptionContent").innerHTML;
     initCommentEditing();
