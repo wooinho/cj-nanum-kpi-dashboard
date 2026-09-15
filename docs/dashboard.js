@@ -348,12 +348,19 @@
   // 차트 렌더링 (build_static_site.py의 Plotly 차트 로직을 그대로 옮김)
   // ---------------------------------------------------------------------
   function styleFig(height, title, monthXaxis) {
+    // legend.yref를 안 주면 기본값 "paper"가 되는데, Plotly에서 "paper"는 전체 캔버스가 아니라
+    // margin을 뺀 "안쪽 플롯 영역" 기준 좌표다 — 즉 y=0.90은 그 플롯 영역 높이의 90% 지점(위에서
+    // 10% 내려온 곳)이라서, 데이터(막대/선)가 축 위쪽까지 올라오면 범례와 겹쳐버린다(실측으로 확인:
+    // margin.t=72로 제목+범례를 위쪽 여백에 넣으려 했지만 실제로는 범례가 플롯 영역 안쪽 상단에
+    // 그려지고 있었음). yref:"container"로 바꾸면 전체 캔버스(제목과 동일 기준) 대비 좌표가 되므로,
+    // margin.t(72px) 안에 고정 픽셀 위치로 넣을 수 있다.
+    const legendTopPx = 30; // 제목(약 22px) 바로 아래, margin.t(72px)보다 확실히 위
     const layout = {
       height: height,
       template: "plotly_white",
       font: { color: FONT_COLOR, size: 13 },
       margin: { l: 10, r: 10, t: title ? 72 : 20, b: 10 },
-      legend: { orientation: "h", yanchor: "top", y: 0.90, xanchor: "left", x: 0 },
+      legend: { orientation: "h", yanchor: "top", y: 1 - legendTopPx / height, yref: "container", xanchor: "left", x: 0 },
       hovermode: "x unified",
       xaxis: monthXaxis
         ? { showgrid: false, zeroline: false, type: "category", categoryorder: "category ascending", automargin: true }
