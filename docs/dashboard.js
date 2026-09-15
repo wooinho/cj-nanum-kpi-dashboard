@@ -634,7 +634,7 @@
   </div>`;
   }
 
-  function generateDiagnosis(annual) {
+  function generateDiagnosis(annual, month) {
     const ranked = sortByKey(annual, (r) => r.annual_progress_rate);
     let html = "";
     ranked.forEach((row, i) => {
@@ -648,12 +648,12 @@
       if (rate < 0.8) body += `<strong>목표 대비 뒤처져 있어 우선 점검이 필요합니다.</strong>`;
       else if (rate > 1.1) body += `목표를 크게 초과했다면, 특정 월에 성과가 쏠려있지 않은지 함께 확인해보는 것이 좋습니다.`;
       else body += `대체로 정상 궤도 위에 있습니다.`;
-      html += makeItemHtml(icon, i + 1, ".", title, body);
+      html += makeItemHtml(icon, i + 1, ".", title, body, month);
     });
     return html;
   }
 
-  function generatePrescription(tables) {
+  function generatePrescription(tables, month) {
     const ranked = sortByKey(tables.annual, (r) => r.annual_progress_rate);
     const worst = ranked[0], best = ranked[ranked.length - 1];
     const bs = {};
@@ -684,7 +684,7 @@
       소진했을 때 목표한 물량을 실제로 달성할 수 있는지 재확인하는 것을 권장합니다.`]);
 
     let html = "";
-    items.forEach((it, i) => { html += makeItemHtml("", i + 1, ")", it[0], it[1]); });
+    items.forEach((it, i) => { html += makeItemHtml("", i + 1, ")", it[0], it[1], month); });
     return html;
   }
 
@@ -723,6 +723,12 @@
     tables.ladder.forEach((d) => months.add(d.month));
     tables.actual.forEach((d) => { if (d.month !== "2025_baseline") months.add(d.month); });
     return Array.from(months).sort();
+  }
+
+  function getLatestDataMonth(tables) {
+    // 자동 생성 진단/처방(업로드 직후)에 "전체"가 아니라 실제 데이터의 최신월을 태그하기 위한 헬퍼.
+    const months = getAvailableMonths(tables).filter((m) => /^\d{4}-\d{2}$/.test(m));
+    return months.length ? months[months.length - 1] : "";
   }
 
   function fillMonthSelect(sel, months, preferredValue) {
@@ -787,8 +793,11 @@
     document.getElementById("h2CascadeTable").innerHTML = arrayToTable(tables.h2Cascade, H2_CASCADE_COLS);
     document.getElementById("h2MediaPlanTable").innerHTML = arrayToTable(tables.h2MediaPlan, H2_MEDIA_PLAN_COLS);
     if (opts.autoDiagnosis) {
-      document.getElementById("diagnosisContent").innerHTML = generateDiagnosis(tables.annual);
-      document.getElementById("prescriptionContent").innerHTML = generatePrescription(tables);
+      // "전체"로 태그하면 어느 월을 선택해도 안 보이는 게 아니라 항상 보이는 항목이 되어버리므로,
+      // 업로드한 데이터의 실제 최신월을 태그해 "월별 점검" 드롭다운에서도 올바르게 걸러지게 한다.
+      const dataMonth = getLatestDataMonth(tables);
+      document.getElementById("diagnosisContent").innerHTML = generateDiagnosis(tables.annual, dataMonth);
+      document.getElementById("prescriptionContent").innerHTML = generatePrescription(tables, dataMonth);
     }
   }
 
@@ -830,12 +839,18 @@
     return m ? m.textContent.trim() : "";
   }
 
-  function getAvailableItemMonths() {
+  function getItemsRealMonths() {
+    // 실제로 항목에 태그된 월만 반환한다 (아래 getAvailableItemMonths()가 채워넣는 1~12월 더미 선택지 제외).
     const months = new Set();
     document.querySelectorAll("#diagnosisContent .item, #prescriptionContent .item").forEach((el) => {
       const m = getItemMonth(el);
       if (m) months.add(m);
     });
+    return Array.from(months).sort();
+  }
+
+  function getAvailableItemMonths() {
+    const months = new Set(getItemsRealMonths());
     // 아직 그 달에 등록된 항목이 하나도 없어도 미리 골라서 새 항목을 등록할 수 있도록, 실제 항목에 쓰인
     // 연도(없으면 2026) 기준 1~12월을 항상 선택지에 포함시킨다. 다른 연도가 실제로 쓰였다면 그 값도
     // 그대로 유지된다(위에서 이미 추가됨).
@@ -846,6 +861,8 @@
     return Array.from(months).sort();
   }
 
+  let diagMonthFilterDefaultSet = false;
+
   function populateDiagMonthFilter() {
     const sel = document.getElementById("diagMonthFilter");
     if (!sel) return;
@@ -853,7 +870,17 @@
     const months = getAvailableItemMonths();
     sel.innerHTML = ['<option value="">전체 (모든 월)</option>']
       .concat(months.map((m) => `<option value="${m}">${m}</option>`)).join("");
-    sel.value = months.includes(prev) ? prev : "";
+    if (!diagMonthFilterDefaultSet) {
+      // 처음 로드될 때는 "전체(모든 월)"가 아니라, 실제 항목이 등록된 가장 최근 월을 기본값으로 선택해
+      // 바로 "월별 점검" 상태로 시작한다 — 이후 사용자가 직접 고른 값은(추가/삭제/편집 후 재호출 시에도)
+      // 그대로 유지한다.
+      const real = getItemsRealMonths();
+      const defaultMonth = real.length ? real[real.length - 1] : "";
+      sel.value = months.includes(defaultMonth) ? defaultMonth : "";
+      diagMonthFilterDefaultSet = true;
+    } else {
+      sel.value = months.includes(prev) ? prev : "";
+    }
   }
 
   function applyDiagMonthFilter() {
@@ -1026,6 +1053,7 @@
           const tables = parseWorkbook(wb);
           renderAll(tables, { autoDiagnosis: true });
           setCommentsEditable(false);
+          diagMonthFilterDefaultSet = false; // 새로 업로드한 데이터의 최신월을 기본 선택값으로 다시 잡는다
           populateDiagMonthFilter();
           applyDiagMonthFilter();
           document.getElementById("revertBtn").hidden = false;
@@ -1049,6 +1077,7 @@
       document.getElementById("diagnosisContent").innerHTML = originalDiagnosisHTML;
       document.getElementById("prescriptionContent").innerHTML = originalPrescriptionHTML;
       setCommentsEditable(false);
+      diagMonthFilterDefaultSet = false; // 원본 데이터 기준 최신월로 기본 선택값을 다시 잡는다
       populateDiagMonthFilter();
       applyDiagMonthFilter();
       document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (2026년 08월 기준)";
