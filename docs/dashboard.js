@@ -943,6 +943,21 @@
     document.getElementById("startEditBtn").hidden = state;
   }
 
+  function getItemBodyText(el) {
+    // .item-body 안의 <br>(여러 줄 항목)을 줄바꿈 문자로 되살려서 읽는다 — textContent는 <br>을 그냥
+    // 무시하고 앞뒤 텍스트를 붙여버려서, 여러 줄로 쓴 처방 항목을 복사하면 한 줄로 뭉개지는 문제가 있었음.
+    const clone = el.querySelector(".item-body").cloneNode(true);
+    clone.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
+    return clone.textContent.trim();
+  }
+
+  function tsvField(value) {
+    // 구글시트에 탭 구분 텍스트를 붙여넣을 때, 셀 안에 줄바꿈이 있으면 그 필드를 큰따옴표로 감싸야
+    // (내부 큰따옴표는 두 개로 이스케이프) 줄바꿈이 새 행으로 안 쪼개지고 한 셀 안에 그대로 들어간다.
+    if (/[\n\t"]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
+    return value;
+  }
+
   function buildSheetPasteText() {
     // 화면에 숨겨진(다른 월로 필터링된) 항목도 빠짐없이 포함한다 — querySelectorAll은 hidden 여부와 무관하게
     // 모든 .item을 가져온다.
@@ -950,12 +965,12 @@
     document.querySelectorAll("#diagnosisContent .item").forEach((el) => {
       lines.push(["진단", getItemMonth(el), el.querySelector(".item-icon").textContent.trim(),
         el.querySelector(".item-title").textContent.trim(),
-        el.querySelector(".item-body").textContent.trim()].join("\t"));
+        tsvField(getItemBodyText(el))].join("\t"));
     });
     document.querySelectorAll("#prescriptionContent .item").forEach((el) => {
       lines.push(["처방", getItemMonth(el), el.querySelector(".item-icon").textContent.trim(),
         el.querySelector(".item-title").textContent.trim(),
-        el.querySelector(".item-body").textContent.trim()].join("\t"));
+        tsvField(getItemBodyText(el))].join("\t"));
     });
     return lines.join("\n");
   }
