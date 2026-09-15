@@ -356,9 +356,12 @@
       legend: { orientation: "h", yanchor: "top", y: 0.90, xanchor: "left", x: 0 },
       hovermode: "x unified",
       xaxis: monthXaxis
-        ? { showgrid: false, zeroline: false, type: "category", categoryorder: "category ascending" }
-        : { showgrid: false, zeroline: false },
-      yaxis: { showgrid: true, gridcolor: GRID, zeroline: false },
+        ? { showgrid: false, zeroline: false, type: "category", categoryorder: "category ascending", automargin: true }
+        : { showgrid: false, zeroline: false, automargin: true },
+      // automargin: true - margin.l/b를 고정 10px로 두면 "40k" 같은 축 눈금 라벨이 여백보다 넓어질 때
+      // 왼쪽이 잘려 숫자 없이 단위(k)만 보이는 문제가 생긴다(실측으로 확인됨). automargin을 주면 Plotly가
+      // 실제 라벨 크기에 맞춰 여백을 알아서 늘려준다.
+      yaxis: { showgrid: true, gridcolor: GRID, zeroline: false, automargin: true },
     };
     if (title) layout.title = { text: title, x: 0.01, xanchor: "left", y: 0.98, yanchor: "top" };
     return layout;
@@ -528,7 +531,7 @@
     let d = filterSorted(igPerf.filter((r) => r.spend != null), () => true);
     let layout = styleFig(360, "인스타그램: 소진금액 vs 인게이지먼트", true);
     layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "소진 금액(원)" } });
-    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "인게이지먼트" } };
+    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "인게이지먼트" }, automargin: true };
     Plotly.react("igdual", [
       { x: d.map((r) => r.month), y: d.map((r) => r.spend), name: "소진 금액(원)", type: "bar", marker: { color: "#FFC9DE" } },
       { x: d.map((r) => r.month), y: d.map((r) => r.engagement_total), name: "인게이지먼트", mode: "lines+markers", line: { color: C_IG, width: 3 }, yaxis: "y2" },
@@ -537,7 +540,7 @@
     d = filterSorted(ytPerf.filter((r) => r.spend != null), () => true);
     layout = styleFig(360, "유튜브: 소진금액 vs 조회수(페이드)", true);
     layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "소진 금액(원)" } });
-    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "조회수" } };
+    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "조회수" }, automargin: true };
     Plotly.react("ytdual", [
       { x: d.map((r) => r.month), y: d.map((r) => r.spend), name: "소진 금액(원)", type: "bar", marker: { color: "#FFD8A8" } },
       { x: d.map((r) => r.month), y: d.map((r) => r.views), name: "조회수(페이드)", mode: "lines+markers", line: { color: C_YT, width: 3 }, yaxis: "y2" },
