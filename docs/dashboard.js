@@ -1067,7 +1067,7 @@
   // 인지한 상태에서 "그래도 캐주얼한 접근 정도는 막아달라"고 선택한 방식이다.
   // 비밀번호를 코드에 평문으로 남기지 않도록 "아이디:비밀번호" 문자열의 SHA-256 해시만 비교한다.
   // ---------------------------------------------------------------------
-  const LOGIN_HASH = "cb90c5cf4c15bd1413e98f8e7634431b8eeae4b37aaf950f5b9c688502905b75";
+  const LOGIN_HASH = "c9e7662318ac188bd0ab007fa7d9611396601aa7ef30086ac1beb706f4a87b26"; // nanum:wylie
   const LOGIN_STORAGE_KEY = "cj_nanum_unlocked_v1";
 
   async function sha256Hex(text) {
