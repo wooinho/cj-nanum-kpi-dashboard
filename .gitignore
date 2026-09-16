@@ -4,6 +4,8 @@
 /requirements.txt
 /run_dashboard.bat
 /publish_to_github.bat
+/auto_update.bat
+/auto_update.log
 /README.md
 /.streamlit/
 /data/
