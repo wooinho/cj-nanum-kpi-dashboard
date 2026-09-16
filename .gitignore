@@ -6,6 +6,7 @@
 /publish_to_github.bat
 /auto_update.bat
 /auto_update.log
+/apps_script_sheet_sync.gs
 /README.md
 /.streamlit/
 /data/

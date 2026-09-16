@@ -992,6 +992,94 @@
     }
   }
 
+  // ---------------------------------------------------------------------
+  // 구글시트 실시간 연동 (Google Apps Script 웹앱) - 설정된 경우에만 동작
+  // ---------------------------------------------------------------------
+  // 아래 URL이 비어 있으면(기본값) 기존처럼 정적 페이지에 미리 그려둔 내용만 보여주고, "여기서 바로
+  // 수정하기"는 이 브라우저에만 임시로 반영되는 미리보기로만 동작한다("구글시트 붙여넣기용 복사"로
+  // 수동 반영). Apps Script 웹앱을 배포해서 이 URL을 채워두면: (1) 페이지를 열 때마다 이 URL에서
+  // 진단/처방 최신 내용을 직접 읽어와 보여주고(재배포 없이 항상 최신 상태), (2) "💾 저장" 버튼이
+  // 나타나서 누르면 전체 내용을 이 URL로 보내 구글시트에 즉시 반영한다(모든 방문자에게 다음 새로고침부터
+  // 바로 보임). 배포 방법은 README.md의 "실시간 반영 (구글시트 연동)" 항목 참고.
+  const SHEET_API_URL = "";
+
+  async function fetchLiveItems() {
+    if (!SHEET_API_URL) return null;
+    try {
+      const res = await fetch(SHEET_API_URL, { method: "GET" });
+      const data = await res.json();
+      if (!data.ok) return null;
+      return data.items; // [{kind, month, icon, title, body}, ...] 시트에 적힌 순서 그대로
+    } catch (e) {
+      console.warn("구글시트 실시간 로드 실패 - 정적 페이지에 미리 그려둔 내용을 대신 보여줍니다.", e);
+      return null;
+    }
+  }
+
+  function escapeHtml_(s) {
+    const div = document.createElement("div");
+    div.textContent = s == null ? "" : String(s);
+    return div.innerHTML;
+  }
+
+  function formatLiveBody_(s) {
+    let body = escapeHtml_(s);
+    body = body.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"); // **굵게** -> <strong>
+    body = body.replace(/\n/g, "<br>"); // 시트 셀 안 줄바꿈을 그대로 살림
+    return body;
+  }
+
+  function renderLiveItems(items) {
+    let dIdx = 0, pIdx = 0;
+    const diagHtml = [];
+    const presHtml = [];
+    items.forEach((it) => {
+      if (it.kind === "진단") {
+        dIdx++;
+        diagHtml.push(makeItemHtml(it.icon, dIdx, ".", escapeHtml_(it.title), formatLiveBody_(it.body), it.month));
+      } else if (it.kind === "처방") {
+        pIdx++;
+        presHtml.push(makeItemHtml(it.icon, pIdx, ")", escapeHtml_(it.title), formatLiveBody_(it.body), it.month));
+      }
+    });
+    if (diagHtml.length) document.getElementById("diagnosisContent").innerHTML = diagHtml.join("");
+    if (presHtml.length) document.getElementById("prescriptionContent").innerHTML = presHtml.join("");
+  }
+
+  async function saveItemsToSheet() {
+    if (!SHEET_API_URL) return { ok: false, error: "연동 안 됨" };
+    const items = [];
+    document.querySelectorAll("#diagnosisContent .item").forEach((el) => {
+      items.push({ kind: "진단", month: getItemMonth(el), icon: el.querySelector(".item-icon").textContent.trim(),
+        title: el.querySelector(".item-title").textContent.trim(), body: getItemBodyText(el) });
+    });
+    document.querySelectorAll("#prescriptionContent .item").forEach((el) => {
+      items.push({ kind: "처방", month: getItemMonth(el), icon: el.querySelector(".item-icon").textContent.trim(),
+        title: el.querySelector(".item-title").textContent.trim(), body: getItemBodyText(el) });
+    });
+    try {
+      // Content-Type을 application/json으로 주면 브라우저가 먼저 OPTIONS(프리플라이트) 요청을 보내는데
+      // Apps Script 웹앱은 이를 처리해주지 않는다. text/plain으로 보내면 CORS "단순 요청"이라 프리플라이트가
+      // 안 붙는다(Apps Script 쪽은 e.postData.contents를 그냥 JSON.parse 하면 되므로 문제 없음).
+      const res = await fetch(SHEET_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "replaceAll", items: items }),
+      });
+      return await res.json();
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  function showSheetSyncStatus(msg, kind) {
+    const el = document.getElementById("sheetSyncStatus");
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = msg;
+    el.className = "upload-status " + kind;
+  }
+
   let diagEditSnapshot = null;
   let presEditSnapshot = null;
 
@@ -1000,6 +1088,33 @@
     if (!startBtn) return;
 
     renumberItems();
+
+    // SHEET_API_URL이 설정된 경우에만 "저장" 버튼을 보여준다 - 안 그러면 눌러도 아무 반응 없는
+    // 죽은 버튼이 되어 버림.
+    const saveBtn = document.getElementById("saveToSheetBtn");
+    if (saveBtn && SHEET_API_URL) {
+      saveBtn.hidden = false;
+      saveBtn.addEventListener("click", function () {
+        const original = saveBtn.textContent;
+        saveBtn.disabled = true;
+        saveBtn.textContent = "저장 중...";
+        showSheetSyncStatus("⏳ 구글시트에 저장하는 중...", "busy");
+        saveItemsToSheet().then(function (result) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = original;
+          if (result && result.ok) {
+            showSheetSyncStatus("✅ 구글시트에 저장했습니다 - 이제 모든 방문자에게 바로 보입니다.", "ok");
+            // 지금 화면 상태가 곧 "원본"이 됐으므로 취소(되돌리기) 스냅샷도 여기서 다시 잡아둔다.
+            diagEditSnapshot = document.getElementById("diagnosisContent").innerHTML;
+            presEditSnapshot = document.getElementById("prescriptionContent").innerHTML;
+            originalDiagnosisHTML = diagEditSnapshot;
+            originalPrescriptionHTML = presEditSnapshot;
+          } else {
+            showSheetSyncStatus("❌ 저장 실패: " + ((result && result.error) || "알 수 없는 오류") + " - \"구글시트 붙여넣기용 복사\"로 수동 반영해주세요.", "err");
+          }
+        });
+      });
+    }
 
     startBtn.addEventListener("click", function () {
       diagEditSnapshot = document.getElementById("diagnosisContent").innerHTML;
@@ -1104,8 +1219,13 @@
     });
   }
 
-  function init() {
+  async function init() {
     initLoginGate();
+    // SHEET_API_URL이 설정돼 있으면, 정적 페이지에 미리 그려둔 내용 대신 구글시트에서 방금 읽어온
+    // 최신 내용으로 먼저 갈아끼운 뒤(재배포 없이도 항상 최신) 편집 관련 초기화를 진행한다. 실패하면
+    // (네트워크 오류 등) 그냥 기존 정적 내용을 그대로 쓴다.
+    const liveItems = await fetchLiveItems();
+    if (liveItems && liveItems.length) renderLiveItems(liveItems);
     originalDiagnosisHTML = document.getElementById("diagnosisContent").innerHTML;
     originalPrescriptionHTML = document.getElementById("prescriptionContent").innerHTML;
     initCommentEditing();
