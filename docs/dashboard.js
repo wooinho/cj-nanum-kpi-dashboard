@@ -77,34 +77,79 @@
     return rows[r - 1] || [];
   }
 
-  function parseAnnualSummary(rowsKPI) {
+  // "연초 기준 + 연간 증가 목표 = 연간 목표"가 성립하는 스톡(누적치) 지표. build_data.py의
+  // STOCK_METRICS와 동일 — 인게이지먼트/조회수는 "연초 기준"이 "작년 전체 실적"일 뿐이라 제외.
+  const STOCK_METRICS = new Set(["팔로워", "구독자"]);
+
+  // "KPI(monthly)" 시트 상단 표에서 "연간 증가 목표"/"연간 목표"/"연초 기준" 컬럼을 읽어 맵으로 만든다.
+  // build_data.py의 섹션 0(INCREASE_TARGET/OLD_ANNUAL_TARGET/BASELINE)과 동일한 로직 — "연간 목표를
+  // 연간 증가 목표로, 스톡 지표 실적은 월별 실적 - 연초 기준으로 반영해달라"는 요청을 xlsx 업로드
+  // 미리보기(클라이언트 파싱)에도 똑같이 적용하기 위함. Python 쪽만 고치면 정적 페이지는 맞는데
+  // 업로드 미리보기만 옛날 방식(절대치)으로 남는 불일치가 생기므로 반드시 같이 유지보수할 것.
+  function computeIncreaseTargets(rowsMonthly) {
+    let mhRow = null;
+    for (let r = 1; r <= 14; r++) {
+      if (rowValues(rowsMonthly, r)[0] === "채널") { mhRow = r; break; }
+    }
+    const increaseTarget = {}, oldAnnualTarget = {}, baseline = {};
+    if (!mhRow) return { increaseTarget, oldAnnualTarget, baseline };
+    let annualTargetCol = null, increaseTargetCol = null, baselineCol = null;
+    rowValues(rowsMonthly, mhRow).forEach((v, idx) => {
+      if (typeof v !== "string") return;
+      const col = idx + 1;
+      if (v.includes("연초 기준")) baselineCol = col;
+      else if (v.includes("증가 목표")) increaseTargetCol = col;
+      else if (v.includes("연간 목표")) annualTargetCol = col;
+    });
+    let curCh = null;
+    for (let r = mhRow + 1; r < mhRow + 5; r++) {
+      const vals = rowValues(rowsMonthly, r);
+      const ch = vals[0];
+      let metric = vals[1];
+      if (ch) curCh = CHANNEL_KO[ch] || ch;
+      if (!metric) continue;
+      metric = cleanMetric(metric);
+      const key = curCh + "|" + metric;
+      if (increaseTargetCol) { const it = num(vals[increaseTargetCol - 1]); if (it !== null) increaseTarget[key] = it; }
+      if (annualTargetCol) { const at = num(vals[annualTargetCol - 1]); if (at !== null) oldAnnualTarget[key] = at; }
+      if (baselineCol) { const bv = num(vals[baselineCol - 1]); if (bv !== null) baseline[key] = bv; }
+    }
+    return { increaseTarget, oldAnnualTarget, baseline };
+  }
+
+  function parseAnnualSummary(rowsKPI, incTargets) {
+    const { increaseTarget, baseline } = incTargets;
+    function annualRow(channel, metric, actual, target, rate, monthlyTarget, monthlyRate) {
+      const newTarget = increaseTarget[channel + "|" + metric];
+      if (newTarget !== undefined && actual !== null) {
+        if (STOCK_METRICS.has(metric)) {
+          const base = baseline[channel + "|" + metric];
+          if (base !== undefined) actual = actual - base;
+        }
+        target = newTarget;
+        rate = target ? actual / target : null;
+      }
+      return { channel, metric, actual_cumulative: actual, annual_target: target,
+        annual_progress_rate: rate, monthly_target: monthlyTarget, monthly_progress_rate: monthlyRate };
+    }
     const out = [];
     for (let r = 1; r <= 8; r++) {
       const vals = rowValues(rowsKPI, r);
       const channel = vals[1];
       if (channel !== "인스타그램" && channel !== "유튜브") continue;
       const stockMetric = channel === "인스타그램" ? "팔로워" : "구독자";
-      out.push({
-        channel, metric: stockMetric, actual_cumulative: num(vals[2]), annual_target: num(vals[4]),
-        annual_progress_rate: num(vals[5]), monthly_target: num(vals[6]), monthly_progress_rate: num(vals[7]),
-      });
+      out.push(annualRow(channel, stockMetric, num(vals[2]), num(vals[4]), num(vals[5]), num(vals[6]), num(vals[7])));
       if (num(vals[8]) !== null) {
-        out.push({
-          channel, metric: "인게이지먼트", actual_cumulative: num(vals[8]), annual_target: num(vals[10]),
-          annual_progress_rate: num(vals[11]), monthly_target: num(vals[12]), monthly_progress_rate: num(vals[13]),
-        });
+        out.push(annualRow(channel, "인게이지먼트", num(vals[8]), num(vals[10]), num(vals[11]), num(vals[12]), num(vals[13])));
       }
       if (num(vals[14]) !== null) {
-        out.push({
-          channel, metric: "조회수", actual_cumulative: num(vals[14]), annual_target: num(vals[16]),
-          annual_progress_rate: num(vals[17]), monthly_target: num(vals[18]), monthly_progress_rate: num(vals[19]),
-        });
+        out.push(annualRow(channel, "조회수", num(vals[14]), num(vals[16]), num(vals[17]), num(vals[18]), num(vals[19])));
       }
     }
     return out;
   }
 
-  function parseLadderAndBudgetPlan(rowsKPI) {
+  function parseLadderAndBudgetPlan(rowsKPI, incTargets) {
     let planTitleRow = null;
     for (let r = 1; r <= 29; r++) {
       if (rowValues(rowsKPI, r)[1] === "채널별 KPI 계획") { planTitleRow = r; break; }
@@ -158,9 +203,16 @@
       const key = row.channel + "|" + row.metric + "|" + row.month;
       if (row.isRate) rates[key] = row.val; else targets[key] = row.val;
     });
+    const { increaseTarget, oldAnnualTarget } = incTargets;
     const ladder = Object.keys(targets).map((key) => {
       const [channel, metric, month] = key.split("|");
-      return { channel, metric, month, target_cumulative: targets[key], target_achievement_rate: rates[key] === undefined ? null : rates[key] };
+      let target = targets[key];
+      // "연간 목표 -> 연간 증가 목표" 변경을 캐스케이드(월별 누적 목표)에도 반영: 11월 누적치가 옛
+      // 연간목표가 아니라 새 목표에 닿도록, 같은 비율로 전체 곡선을 축소한다(월별 배분 모양은 유지).
+      const newTarget = increaseTarget[channel + "|" + metric];
+      const oldTarget = oldAnnualTarget[channel + "|" + metric];
+      if (newTarget !== undefined && oldTarget) target = target * newTarget / oldTarget;
+      return { channel, metric, month, target_cumulative: target, target_achievement_rate: rates[key] === undefined ? null : rates[key] };
     });
     return { ladder: sortByKey(ladder, (d) => d.channel + d.metric + d.month), budgetPlan };
   }
@@ -191,15 +243,25 @@
       const channel = vals[0], metric = vals[1];
       if (channel) curChannel = CHANNEL_KO[channel] || channel;
       if (!(metric in kindMap)) continue;
-      const kind = kindMap[metric];
+      const kind = kindMap[metric]; // 팔로워/구독자 = "stock" (STOCK_METRICS와 동일한 두 지표)
       let cum = 0;
+      let base = null;
       if (baselineCol) {
-        const base = num(vals[baselineCol - 1]);
-        if (base !== null) out.push({ channel: curChannel, metric, metric_type: kind, month: "2025_baseline", actual_value: base, actual_cumulative: base });
+        base = num(vals[baselineCol - 1]);
+        if (base !== null) {
+          // 스톡 지표는 "월별 실적 - 연초 기준"을 실적으로 쓰기로 했으므로, 연초 시점(기준 그 자체)의
+          // 누적치는 0(아직 순증가분 없음)이 맞다. actual_value 칸에는 참고용으로 원래 절대치를 남겨둔다.
+          const cum0 = kind === "stock" ? 0 : base;
+          out.push({ channel: curChannel, metric, metric_type: kind, month: "2025_baseline", actual_value: base, actual_cumulative: cum0 });
+        }
       }
       Object.keys(monthActualCols).sort().forEach((month) => {
         const v = num(vals[monthActualCols[month] - 1]);
         if (v === null) return;
+        if (kind === "stock" && base !== null) {
+          out.push({ channel: curChannel, metric, metric_type: kind, month, actual_value: v, actual_cumulative: v - base });
+          return;
+        }
         if (kind === "flow") {
           cum += v;
           out.push({ channel: curChannel, metric, metric_type: kind, month, actual_value: v, actual_cumulative: cum });
@@ -332,8 +394,9 @@
     const rowsMonthly = sheetToRows(wb.Sheets[wb.SheetNames[1]]);
     const rowsH2 = sheetToRows(wb.Sheets[wb.SheetNames[2]]);
 
-    const annual = parseAnnualSummary(rowsKPI);
-    const { ladder } = parseLadderAndBudgetPlan(rowsKPI);
+    const incTargets = computeIncreaseTargets(rowsMonthly);
+    const annual = parseAnnualSummary(rowsKPI, incTargets);
+    const { ladder } = parseLadderAndBudgetPlan(rowsKPI, incTargets);
     const actual = parseMonthlyActual(rowsMonthly);
     const igPerf = extractMediaTable(rowsKPI, "인스타그램 운영 성과", IG_PERF_FIELDS);
     const ytPerf = extractMediaTable(rowsKPI, "유튜브 운영 성과", YT_PERF_FIELDS);
