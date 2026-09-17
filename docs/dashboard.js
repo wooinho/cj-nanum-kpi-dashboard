@@ -562,84 +562,12 @@
       styleFig(320, "유튜브 월별 조회수 발생량", true), PCFG);
   }
 
-  function pearson(xs, ys) {
-    const n = xs.length;
-    if (n < 2) return null;
-    const mx = xs.reduce((a, b) => a + b, 0) / n;
-    const my = ys.reduce((a, b) => a + b, 0) / n;
-    let sxy = 0, sxx = 0, syy = 0;
-    for (let i = 0; i < n; i++) {
-      const dx = xs[i] - mx, dy = ys[i] - my;
-      sxy += dx * dy; sxx += dx * dx; syy += dy * dy;
-    }
-    const denom = Math.sqrt(sxx * syy);
-    return denom === 0 ? null : sxy / denom;
-  }
-  function corrWithSpend(rows, cols) {
-    const out = [];
-    cols.forEach((c) => {
-      const pairs = rows.filter((r) => r.spend != null && r[c] != null);
-      if (pairs.length < 2) return;
-      const v = pearson(pairs.map((r) => r.spend), pairs.map((r) => r[c]));
-      if (v !== null) out.push({ col: c, val: v });
-    });
-    out.sort((a, b) => a.val - b.val);
-    return out;
-  }
-  function renderCorrChart(id, rows, cols) {
-    const corr = corrWithSpend(rows, cols);
-    const trace = { x: corr.map((c) => c.val), y: corr.map((c) => c.col), type: "bar", orientation: "h", marker: { color: corr.map((c) => (c.val < 0 ? C_BAD : C_GOOD)) } };
-    const layout = styleFig(320, "소진금액과의 상관계수 (Pearson)", false);
-    layout.xaxis = Object.assign({}, layout.xaxis, { range: [-1, 1] });
-    Plotly.react(id, [trace], layout, PCFG);
-  }
-
-  function renderCrossAnalysis(tables) {
-    const igPerf = tables.igPerf.filter((r) => r.month !== "TOTAL");
-    const ytPerf = tables.ytPerf.filter((r) => r.month !== "TOTAL");
-
-    let d = filterSorted(igPerf.filter((r) => r.spend != null), () => true);
-    let layout = styleFig(360, "인스타그램: 소진금액 vs 인게이지먼트", true);
-    layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "소진 금액(원)" } });
-    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "인게이지먼트" }, automargin: true };
-    Plotly.react("igdual", [
-      { x: d.map((r) => r.month), y: d.map((r) => r.spend), name: "소진 금액(원)", type: "bar", marker: { color: "#FFC9DE" } },
-      { x: d.map((r) => r.month), y: d.map((r) => r.engagement_total), name: "인게이지먼트", mode: "lines+markers", line: { color: C_IG, width: 3 }, yaxis: "y2" },
-    ], layout, PCFG);
-
-    d = filterSorted(ytPerf.filter((r) => r.spend != null), () => true);
-    layout = styleFig(360, "유튜브: 소진금액 vs 조회수(페이드)", true);
-    layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "소진 금액(원)" } });
-    layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: "조회수" }, automargin: true };
-    Plotly.react("ytdual", [
-      { x: d.map((r) => r.month), y: d.map((r) => r.spend), name: "소진 금액(원)", type: "bar", marker: { color: "#FFD8A8" } },
-      { x: d.map((r) => r.month), y: d.map((r) => r.views), name: "조회수(페이드)", mode: "lines+markers", line: { color: C_YT, width: 3 }, yaxis: "y2" },
-    ], layout, PCFG);
-
-    const igNum = igPerf.filter((r) => r.spend > 0);
-    const ytNum = ytPerf.filter((r) => r.spend > 0);
-    renderCorrChart("igcorr", igNum, ["engagement_total", "cpe", "impressions", "clicks", "reach", "profile_visit", "ctr", "cpc"]);
-    renderCorrChart("ytcorr", ytNum, ["engagement_total", "impressions", "clicks", "views", "ctr", "vtr", "cpv"]);
-    document.getElementById("igCorrNLabel").textContent = `${igNum.length}개월, 광고 집행월만`;
-    document.getElementById("ytCorrNLabel").textContent = `${ytNum.length}개월, 광고 집행월만`;
-    document.getElementById("igCorrCaption").textContent = `소진금액↑일수록 CPC·CPE는 낮아지고(음의 상관) 도달·참여는 늘어나는 경향이면 예산 확대가 유효하다는 신호입니다. 다만 표본이 ${igNum.length}개월뿐이라 참고용 지표입니다.`;
-    document.getElementById("ytCorrCaption").textContent = `유튜브는 표본이 ${ytNum.length}개월뿐이라 상관계수의 통계적 의미는 제한적입니다 — 방향성 참고용입니다.`;
-
-    d = filterSorted(igPerf.filter((r) => r.cpe != null), () => true);
-    Plotly.react("igeff", [
-      { x: d.map((r) => r.month), y: d.map((r) => r.cpe), name: "CPE(참여당 단가)", mode: "lines+markers", line: { color: C_IG } },
-      { x: d.map((r) => r.month), y: d.map((r) => r.cpc), name: "CPC(클릭당 단가)", mode: "lines+markers", line: { color: "#862E9C" } },
-    ], styleFig(320, "인스타그램 CPE / CPC 추이 (원)", true), PCFG);
-
-    d = filterSorted(ytPerf.filter((r) => r.cpv != null), () => true);
-    Plotly.react("yteff", [
-      { x: d.map((r) => r.month), y: d.map((r) => r.cpv), name: "CPV(조회당 단가)", mode: "lines+markers", line: { color: C_YT } },
-      { x: d.map((r) => r.month), y: d.map((r) => (r.vtr == null ? null : r.vtr * 1000)), name: "VTR×1000 (스케일 보정)", mode: "lines+markers", line: { color: "#1971C2" } },
-    ], styleFig(320, "유튜브 CPV / VTR 추이", true), PCFG);
-  }
-
   // ---------------------------------------------------------------------
-  // 일별 팔로워/구독자 수 추이 및 주요 활동 기여도 (Tab3 맨 아래 섹션) - "월 선택" 드롭다운
+  // 일별 팔로워/구독자 수 추이 및 주요 활동 기여도 (Tab3 "KPI별 액티비티 교차분석") - "월 선택" 드롭다운
+  // 예전엔 이 탭이 "매체 집행 x 성과 교차분석"(월별 소진금액 vs 성과 dual-axis + 상관계수 + 단가추이)
+  // 이었는데, 이 탭의 실제 목적(팔로워/구독자 추이에 영향을 준 활동을 확인하고 기여도를 측정하는 것)에
+  // 맞지 않아 전부 들어내고 이 섹션 하나로 교체함(관련 renderCrossAnalysis/corrWithSpend/renderCorrChart/
+  // pearson 함수도 함께 삭제 - 필요하면 git 이력에서 복구 가능).
   // ---------------------------------------------------------------------
   // 목적: 팔로워/구독자 추이에 영향을 준 활동("팔로우&구독 daily" 시트의 "비고"에 적힌 메모 - 광고
   // on/off, 콘텐츠 발행 등)을 확인하고 기여도(그 활동 당일의 전일 대비 증감)를 측정하는 것. 그래서
@@ -960,7 +888,6 @@
     populatePeriodSelectors(tables);
     applyPeriodFilter();
     renderTrendCharts(tables);
-    renderCrossAnalysis(tables);
     renderRankChart(tables.annual);
     document.getElementById("h2CascadeTable").innerHTML = arrayToTable(tables.h2Cascade, H2_CASCADE_COLS);
     document.getElementById("h2MediaPlanTable").innerHTML = arrayToTable(tables.h2MediaPlan, H2_MEDIA_PLAN_COLS);
