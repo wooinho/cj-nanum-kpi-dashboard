@@ -686,6 +686,18 @@
       // "텍스트가 그래프와 겹쳐 보인다"는 피드백을 받았음.
       layout.yaxis = Object.assign({}, layout.yaxis, { title: null });
       layout.annotations = monthlyRateAnnotations_(tables, channel, metric, daily);
+      // "연간 목표" 기준선 - 채널별 핵심 KPI 카드와 동일한 원본(raw) 값(annual_target_raw) 사용.
+      // build_static_site.py의 add_hline과 동일 로직(shapes+annotations로 직접 구현).
+      const targetRow = (tables.annual || []).find((r) => r.channel === channel && r.metric === metric);
+      if (targetRow && targetRow.annual_target_raw) {
+        const t = targetRow.annual_target_raw;
+        layout.shapes = [{ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: t, y1: t,
+          line: { color: C_TARGET, width: 2, dash: "dash" } }];
+        layout.annotations = layout.annotations.concat([{
+          xref: "paper", x: 0, xanchor: "left", yref: "y", y: t, yanchor: "bottom",
+          text: `연간 목표 ${fmt(t)}`, showarrow: false, font: { size: 11, color: FONT_COLOR },
+        }]);
+      }
       const traces = [
         { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
           mode: "lines", line: { color: color, width: 2 } },
