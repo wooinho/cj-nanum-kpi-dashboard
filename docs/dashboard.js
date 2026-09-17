@@ -570,7 +570,7 @@
     const declineMonths = [];
     for (let i = 1; i < vals.length; i++) if (vals[i] - vals[i - 1] < 0) declineMonths.push(rows[i].month);
     if (!declineMonths.length) return `✅ ${unitLabel} 순감소 없이 꾸준히 증가/유지되었습니다.`;
-    return `⚠️ ${vals.length}개월 중 <b>${declineMonths.length}개월</b> ${unitLabel} 순감소 발생 (${declineMonths.join(", ")})`;
+    return `⚠️ ${vals.length}개월 중 <b>${declineMonths.length}개월</b> ${unitLabel} 순감소 발생`;
   }
 
   function renderTrendCharts(tables) {
@@ -578,14 +578,14 @@
     const igFVals = igF.map((d) => d.actual_value);
     const igFColors = igFVals.map((v, i) => (i === 0 ? 0 : v - igFVals[i - 1]) < 0 ? C_BAD : C_GOOD);
     Plotly.react("igf", [{ x: igF.map((d) => d.month), y: igFVals, mode: "lines+markers", line: { color: C_IG, width: 3 }, marker: { size: 9, color: igFColors }, name: "IG 팔로워(월말)" }],
-      styleFig(320, "인스타그램 팔로워 수 추이 (월말 절대치)", true), PCFG);
+      styleFig(320, "인스타그램 팔로워 수 추이", true), PCFG);
     document.getElementById("igFDeclineBox").innerHTML = declineBoxHtml(igF, "팔로워");
 
     const ytS = filterSorted(tables.actual, (d) => d.channel === "유튜브" && d.metric === "구독자" && d.month !== "2025_baseline");
     const ytSVals = ytS.map((d) => d.actual_value);
     const ytSColors = ytSVals.map((v, i) => (i === 0 ? 0 : v - ytSVals[i - 1]) < 0 ? C_BAD : C_GOOD);
     Plotly.react("yts", [{ x: ytS.map((d) => d.month), y: ytSVals, mode: "lines+markers", line: { color: C_YT, width: 3 }, marker: { size: 9, color: ytSColors }, name: "YT 구독자(월말)" }],
-      styleFig(320, "유튜브 구독자 수 추이 (월말 절대치)", true), PCFG);
+      styleFig(320, "유튜브 구독자 수 추이", true), PCFG);
     document.getElementById("ytSDeclineBox").innerHTML = declineBoxHtml(ytS, "구독자");
 
     const igE = filterSorted(tables.actual, (d) => d.channel === "인스타그램" && d.metric === "인게이지먼트" && d.month !== "2025_baseline");
