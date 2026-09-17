@@ -639,43 +639,77 @@
   }
 
   // ---------------------------------------------------------------------
-  // 일별 팔로워/구독자 수 vs 월별 광고 집행 (Tab3 맨 아래 섹션) - "월 선택" 드롭다운
+  // 일별 팔로워/구독자 수 추이 및 주요 활동 기여도 (Tab3 맨 아래 섹션) - "월 선택" 드롭다운
   // ---------------------------------------------------------------------
-  // 광고비는 일 단위 데이터가 없어(원본 시트가 월 단위) 막대는 그 달 전체에 같은 값으로 넓게 그려서
-  // 일별 팔로워/구독자 선(절대치)과 같은 date형 x축 위에서 비교한다. build_static_site.py가 처음에
-  // "전체 기간" 정적 차트를 미리 그려두지만(JS 없이도 뭔가는 보이도록), 페이지가 뜨면 이 필터가 곧바로
-  // 특정 월(기본값: 데이터가 있는 가장 최근 달)로 다시 그려서 훨씬 읽기 쉬운 상태로 시작한다.
-  const DAILY_BAR_WIDTH_MS = 26 * 24 * 60 * 60 * 1000;
-
+  // 목적: 팔로워/구독자 추이에 영향을 준 활동("팔로우&구독 daily" 시트의 "비고"에 적힌 메모 - 광고
+  // on/off, 콘텐츠 발행 등)을 확인하고 기여도(그 활동 당일의 전일 대비 증감)를 측정하는 것. 그래서
+  // 다른 시트 출처인 월별 광고 집행은 더 이상 겹쳐 그리지 않고, 이 시트 안의 값만 쓴다. 활동이 있는
+  // 날은 ★ 마커로 표시하고(호버에 활동 내용+기여도), 차트 아래에 같은 내용을 목록으로도 보여준다.
+  // build_static_site.py가 처음에 "전체 기간" 정적 차트를 미리 그려두지만(JS 없이도 뭔가는 보이도록),
+  // 페이지가 뜨면 이 필터가 곧바로 특정 월(기본값: 데이터가 있는 가장 최근 달)로 다시 그린다.
   function getDailyCrossMonths(tables) {
     const months = new Set();
     (tables.dailyGrowth || []).forEach((r) => { if (r.date) months.add(r.date.slice(0, 7)); });
     return Array.from(months).sort();
   }
 
+  function formatDiff_(v) {
+    if (v === null || v === undefined || v === "") return "";
+    const n = Number(v);
+    if (Number.isNaN(n)) return "";
+    return (n >= 0 ? "+" : "") + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+
+  function renderEventList_(elId, rows, metricLabel) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const events = rows.filter((r) => r.note && String(r.note).trim() !== "");
+    if (!events.length) {
+      el.innerHTML = '<div class="caption">이 기간에 기록된 활동이 없습니다.</div>';
+      return;
+    }
+    const shortLabel = metricLabel.replace(" 수", "");
+    const items = events.map((r) => {
+      const diffNum = Number(r.diff);
+      const color = !Number.isNaN(diffNum) && diffNum < 0 ? C_BAD : C_GOOD;
+      const d = new Date(r.date + "T00:00:00");
+      const dateLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+      return `<div class="insight-item"><b>${dateLabel}</b> ${escapeHtml_(r.note)}` +
+        ` — <span style="color:${color};font-weight:600">${formatDiff_(r.diff)}${shortLabel}</span></div>`;
+    }).join("");
+    el.innerHTML = `<div class="insight-list">${items}</div>`;
+  }
+
   function renderDailyCrossCharts(tables, month) {
     const dailyGrowth = tables.dailyGrowth || [];
     if (!dailyGrowth.length) return; // 이 탭이 없는 시트로 업로드한 경우 등 - 조용히 아무것도 안 함
 
-    function oneChart(divId, channel, metricLabel, color, barColor, perf, spendField) {
+    function oneChart(divId, listId, channel, metricLabel, color) {
       const daily = dailyGrowth
         .filter((r) => r.channel === channel && (!month || r.date.slice(0, 7) === month))
         .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-      const spendRows = perf.filter((r) => r.month !== "TOTAL" && r.spend != null && r.spend > 0 && (!month || r.month === month));
-      const layout = styleFig(340, `${channel}: 일별 ${metricLabel} vs 월별 광고 집행`, false);
+      const events = daily.filter((r) => r.note && String(r.note).trim() !== "");
+      const layout = styleFig(340, `${channel}: 일별 ${metricLabel} 추이 및 주요 활동`, false);
       layout.xaxis = Object.assign({}, layout.xaxis, { type: "date" });
-      layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "월별 소진 금액(원)" } });
-      layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: metricLabel }, automargin: true };
-      Plotly.react(divId, [
-        { x: spendRows.map((r) => r.month + "-01"), y: spendRows.map((r) => r.spend), name: "월별 소진 금액(원)",
-          type: "bar", marker: { color: barColor }, opacity: 0.75, width: DAILY_BAR_WIDTH_MS },
+      layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: metricLabel } });
+      const traces = [
         { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
-          mode: "lines", line: { color: color, width: 2 }, yaxis: "y2" },
-      ], layout, PCFG);
+          mode: "lines", line: { color: color, width: 2 } },
+      ];
+      if (events.length) {
+        traces.push({
+          x: events.map((r) => r.date), y: events.map((r) => r.value), name: "주요 활동", mode: "markers",
+          marker: { color: "#212529", size: 10, symbol: "star", line: { color: "#fff", width: 1 } },
+          text: events.map((r) => `${r.note} (${formatDiff_(r.diff)})`),
+          hovertemplate: "%{text}<extra></extra>",
+        });
+      }
+      Plotly.react(divId, traces, layout, PCFG);
+      renderEventList_(listId, daily, metricLabel);
     }
 
-    oneChart("igdailycross", "인스타그램", "팔로워 수", C_IG, "#FFC9DE", tables.igPerf, "spend");
-    oneChart("ytdailycross", "유튜브", "구독자 수", C_YT, "#FFD8A8", tables.ytPerf, "spend");
+    oneChart("igdailycross", "igEventList", "인스타그램", "팔로워 수", C_IG);
+    oneChart("ytdailycross", "ytEventList", "유튜브", "구독자 수", C_YT);
   }
 
   function populateDailyCrossMonthSelect(tables) {
