@@ -251,6 +251,15 @@
     });
 
     const kindMap = { 팔로워: "stock", 구독자: "stock", 인게이지먼트: "flow", 조회수: "flow" };
+    // 초기 몇 개월은 집계가 불안정/신뢰 불가하다는 담당자 판단으로 제외 요청받음(2026-09-17) -
+    // build_data.py의 EXCLUDED_ACTUAL_MONTHS와 동일. 플로우 지표는 제외된 달이 이후 누적합산에도
+    // 아예 포함되지 않는다(있었던 적 없는 것처럼 처리).
+    const EXCLUDED_ACTUAL_MONTHS = {
+      "인스타그램|팔로워": new Set(["2026-03"]),
+      "인스타그램|인게이지먼트": new Set(["2026-03", "2026-04"]),
+      "유튜브|구독자": new Set(["2026-03"]),
+      "유튜브|조회수": new Set(["2026-03", "2026-04"]),
+    };
     let curChannel = null;
     const out = [];
     for (let r = mHeaderRow + 1; r < mHeaderRow + 5; r++) {
@@ -259,6 +268,7 @@
       if (channel) curChannel = CHANNEL_KO[channel] || channel;
       if (!(metric in kindMap)) continue;
       const kind = kindMap[metric]; // 팔로워/구독자 = "stock" (STOCK_METRICS와 동일한 두 지표)
+      const excludedMonths = EXCLUDED_ACTUAL_MONTHS[curChannel + "|" + metric] || new Set();
       let cum = 0;
       let base = null;
       if (baselineCol) {
@@ -271,6 +281,7 @@
         }
       }
       Object.keys(monthActualCols).sort().forEach((month) => {
+        if (excludedMonths.has(month)) return;
         const v = num(vals[monthActualCols[month] - 1]);
         if (v === null) return;
         if (kind === "stock" && base !== null) {
