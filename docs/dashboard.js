@@ -608,11 +608,38 @@
     el.innerHTML = `<div class="insight-list">${items}</div>`;
   }
 
+  function monthlyRateAnnotations_(tables, channel, metric, daily) {
+    // 이 채널×지표의, daily(일별 시리즈)에 걸쳐 있는 각 달의 "월별 목표 대비 달성률"을 그 달 마지막
+    // 데이터 포인트 위에 라벨로 붙인다. ladder(그 달까지의 누적 목표)와 actual(그 달까지의 누적 실적
+    // - 팔로워/구독자는 연초 대비 순증가분 기준)을 개요 탭 캐스케이드 차트와 동일한 방식으로 비교한다.
+    const months = Array.from(new Set(daily.map((r) => r.date.slice(0, 7)))).sort();
+    const annotations = [];
+    months.forEach((month) => {
+      const tRow = (tables.ladder || []).find((r) => r.channel === channel && r.metric === metric && r.month === month);
+      const aRow = (tables.actual || []).find((r) => r.channel === channel && r.metric === metric && r.month === month);
+      if (!tRow || !aRow || !tRow.target_cumulative) return;
+      const target = tRow.target_cumulative;
+      const rate = (aRow.actual_cumulative / target) * 100;
+      const icon = rate >= 95 ? "🟢" : rate >= 80 ? "🟡" : "🔴";
+      const monthDays = daily.filter((r) => r.date.slice(0, 7) === month);
+      if (!monthDays.length) return;
+      const last = monthDays[monthDays.length - 1];
+      annotations.push({
+        x: last.date, y: last.value, xref: "x", yref: "y",
+        text: `${icon} 목표대비 ${rate.toFixed(0)}% (목표 ${target.toLocaleString("en-US", { maximumFractionDigits: 0 })})`,
+        showarrow: true, arrowhead: 0, arrowcolor: GRID,
+        ax: 0, ay: -32, font: { size: 11, color: FONT_COLOR }, bgcolor: "rgba(255,255,255,0.85)",
+        bordercolor: GRID, borderwidth: 1, borderpad: 3,
+      });
+    });
+    return annotations;
+  }
+
   function renderDailyCrossCharts(tables, month) {
     const dailyGrowth = tables.dailyGrowth || [];
     if (!dailyGrowth.length) return; // 이 탭이 없는 시트로 업로드한 경우 등 - 조용히 아무것도 안 함
 
-    function oneChart(divId, listId, channel, metricLabel, color) {
+    function oneChart(divId, listId, channel, metric, metricLabel, color) {
       const daily = dailyGrowth
         .filter((r) => r.channel === channel && (!month || r.date.slice(0, 7) === month))
         .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -623,6 +650,7 @@
       // 글자가 "37.2k" 같은 눈금 숫자와 좁은 왼쪽 여백 안에서 거의 붙어 보여서(실측: 간격 1px 미만)
       // "텍스트가 그래프와 겹쳐 보인다"는 피드백을 받았음.
       layout.yaxis = Object.assign({}, layout.yaxis, { title: null });
+      layout.annotations = monthlyRateAnnotations_(tables, channel, metric, daily);
       const traces = [
         { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
           mode: "lines", line: { color: color, width: 2 } },
@@ -639,8 +667,8 @@
       renderEventList_(listId, daily, metricLabel);
     }
 
-    oneChart("igdailycross", "igEventList", "인스타그램", "팔로워 수", C_IG);
-    oneChart("ytdailycross", "ytEventList", "유튜브", "구독자 수", C_YT);
+    oneChart("igdailycross", "igEventList", "인스타그램", "팔로워", "팔로워 수", C_IG);
+    oneChart("ytdailycross", "ytEventList", "유튜브", "구독자", "구독자 수", C_YT);
   }
 
   function populateDailyCrossMonthSelect(tables) {
