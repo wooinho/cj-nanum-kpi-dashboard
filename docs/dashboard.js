@@ -619,7 +619,10 @@
       const events = daily.filter((r) => r.note && String(r.note).trim() !== "");
       const layout = styleFig(340, `${channel}: 일별 ${metricLabel} 추이 및 주요 활동`, false);
       layout.xaxis = Object.assign({}, layout.xaxis, { type: "date" });
-      layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: metricLabel } });
+      // y축에 별도 제목을 안 넣는다 - 차트 자체 제목에 이미 지표명이 있는데, 세로로 회전된 축 제목
+      // 글자가 "37.2k" 같은 눈금 숫자와 좁은 왼쪽 여백 안에서 거의 붙어 보여서(실측: 간격 1px 미만)
+      // "텍스트가 그래프와 겹쳐 보인다"는 피드백을 받았음.
+      layout.yaxis = Object.assign({}, layout.yaxis, { title: null });
       const traces = [
         { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
           mode: "lines", line: { color: color, width: 2 } },
