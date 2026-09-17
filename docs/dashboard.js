@@ -638,6 +638,71 @@
     ], styleFig(320, "유튜브 CPV / VTR 추이", true), PCFG);
   }
 
+  // ---------------------------------------------------------------------
+  // 일별 팔로워/구독자 수 vs 월별 광고 집행 (Tab3 맨 아래 섹션) - "월 선택" 드롭다운
+  // ---------------------------------------------------------------------
+  // 광고비는 일 단위 데이터가 없어(원본 시트가 월 단위) 막대는 그 달 전체에 같은 값으로 넓게 그려서
+  // 일별 팔로워/구독자 선(절대치)과 같은 date형 x축 위에서 비교한다. build_static_site.py가 처음에
+  // "전체 기간" 정적 차트를 미리 그려두지만(JS 없이도 뭔가는 보이도록), 페이지가 뜨면 이 필터가 곧바로
+  // 특정 월(기본값: 데이터가 있는 가장 최근 달)로 다시 그려서 훨씬 읽기 쉬운 상태로 시작한다.
+  const DAILY_BAR_WIDTH_MS = 26 * 24 * 60 * 60 * 1000;
+
+  function getDailyCrossMonths(tables) {
+    const months = new Set();
+    (tables.dailyGrowth || []).forEach((r) => { if (r.date) months.add(r.date.slice(0, 7)); });
+    return Array.from(months).sort();
+  }
+
+  function renderDailyCrossCharts(tables, month) {
+    const dailyGrowth = tables.dailyGrowth || [];
+    if (!dailyGrowth.length) return; // 이 탭이 없는 시트로 업로드한 경우 등 - 조용히 아무것도 안 함
+
+    function oneChart(divId, channel, metricLabel, color, barColor, perf, spendField) {
+      const daily = dailyGrowth
+        .filter((r) => r.channel === channel && (!month || r.date.slice(0, 7) === month))
+        .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      const spendRows = perf.filter((r) => r.month !== "TOTAL" && r.spend != null && r.spend > 0 && (!month || r.month === month));
+      const layout = styleFig(340, `${channel}: 일별 ${metricLabel} vs 월별 광고 집행`, false);
+      layout.xaxis = Object.assign({}, layout.xaxis, { type: "date" });
+      layout.yaxis = Object.assign({}, layout.yaxis, { title: { text: "월별 소진 금액(원)" } });
+      layout.yaxis2 = { showgrid: false, zeroline: false, overlaying: "y", side: "right", title: { text: metricLabel }, automargin: true };
+      Plotly.react(divId, [
+        { x: spendRows.map((r) => r.month + "-01"), y: spendRows.map((r) => r.spend), name: "월별 소진 금액(원)",
+          type: "bar", marker: { color: barColor }, opacity: 0.75, width: DAILY_BAR_WIDTH_MS },
+        { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
+          mode: "lines", line: { color: color, width: 2 }, yaxis: "y2" },
+      ], layout, PCFG);
+    }
+
+    oneChart("igdailycross", "인스타그램", "팔로워 수", C_IG, "#FFC9DE", tables.igPerf, "spend");
+    oneChart("ytdailycross", "유튜브", "구독자 수", C_YT, "#FFD8A8", tables.ytPerf, "spend");
+  }
+
+  function populateDailyCrossMonthSelect(tables) {
+    const sel = document.getElementById("dailyCrossMonth");
+    if (!sel) return;
+    const months = getDailyCrossMonths(tables);
+    if (!months.length) return;
+    sel.innerHTML = ['<option value="">전체 기간</option>'].concat(
+      months.map((m) => `<option value="${m}">${m}</option>`)
+    ).join("");
+    sel.value = months[months.length - 1]; // 기본값: 가장 최근 달 (전체보다 훨씬 읽기 쉬움)
+  }
+
+  function applyDailyCrossFilter() {
+    const sel = document.getElementById("dailyCrossMonth");
+    if (!sel || !currentTables) return;
+    renderDailyCrossCharts(currentTables, sel.value);
+  }
+
+  function initDailyCrossFilter(tables) {
+    const sel = document.getElementById("dailyCrossMonth");
+    if (!sel) return;
+    populateDailyCrossMonthSelect(tables);
+    applyDailyCrossFilter();
+    sel.addEventListener("change", applyDailyCrossFilter);
+  }
+
   function renderRankChart(annual) {
     const ranked = sortByKey(annual, (r) => r.annual_progress_rate);
     const colors = ranked.map((r) => (r.annual_progress_rate < 0.8 ? C_BAD : r.annual_progress_rate < 0.95 ? C_WARN : C_GOOD));
@@ -1345,6 +1410,7 @@
       currentTables = window.__BASELINE_TABLES__;
       populatePeriodSelectors(currentTables);
       applyPeriodFilter();
+      initDailyCrossFilter(currentTables);
     }
   }
 
