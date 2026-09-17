@@ -686,17 +686,33 @@
       // "텍스트가 그래프와 겹쳐 보인다"는 피드백을 받았음.
       layout.yaxis = Object.assign({}, layout.yaxis, { title: null });
       layout.annotations = monthlyRateAnnotations_(tables, channel, metric, daily);
-      // "연간 목표" 기준선 - 채널별 핵심 KPI 카드와 동일한 원본(raw) 값(annual_target_raw) 사용.
-      // build_static_site.py의 add_hline과 동일 로직(shapes+annotations로 직접 구현).
+      // y축을 "연간 목표"까지 늘리지 않고 실제 일별 데이터 범위에만 맞춘다 - 목표가 실적보다 훨씬 위라
+      // autorange에 맡기면 실제 편차(몇백 단위)가 축 하단에 짜부라져 안 보이는 문제가 있었음. 목표가 이
+      // 범위를 벗어나면 실제 눈금 위치에 선을 긋는 대신 우측 상단 고정 배지로만 표시. hoverformat도
+      // ",.0f"로 고정 - Plotly 기본값은 호버에도 "68.074k"처럼 SI 접두어를 쓰는데 이 프로젝트 수치
+      // 규모에서는 k 단위가 오히려 헷갈린다는 피드백으로 콤마 표기로 바꿈. build_static_site.py 동일 로직.
+      const vals = daily.map((r) => r.value);
+      const vmin = Math.min(...vals), vmax = Math.max(...vals);
+      const pad = Math.max((vmax - vmin) * 0.15, vmax * 0.003, 1);
+      const yLo = vmin - pad, yHi = vmax + pad;
+      layout.yaxis = Object.assign({}, layout.yaxis, { range: [yLo, yHi], hoverformat: ",.0f" });
       const targetRow = (tables.annual || []).find((r) => r.channel === channel && r.metric === metric);
       if (targetRow && targetRow.annual_target_raw) {
         const t = targetRow.annual_target_raw;
-        layout.shapes = [{ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: t, y1: t,
-          line: { color: C_TARGET, width: 2, dash: "dash" } }];
-        layout.annotations = layout.annotations.concat([{
-          xref: "paper", x: 0, xanchor: "left", yref: "y", y: t, yanchor: "bottom",
-          text: `연간 목표 ${fmt(t)}`, showarrow: false, font: { size: 11, color: FONT_COLOR },
-        }]);
+        if (t >= yLo && t <= yHi) {
+          layout.shapes = [{ type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: t, y1: t,
+            line: { color: C_TARGET, width: 2, dash: "dash" } }];
+          layout.annotations = layout.annotations.concat([{
+            xref: "paper", x: 0, xanchor: "left", yref: "y", y: t, yanchor: "bottom",
+            text: `연간 목표 ${fmt(t)}`, showarrow: false, font: { size: 11, color: FONT_COLOR },
+          }]);
+        } else {
+          layout.annotations = layout.annotations.concat([{
+            xref: "paper", x: 0.99, xanchor: "right", yref: "paper", y: 0.98, yanchor: "top",
+            text: `🎯 연간 목표 ${fmt(t)}`, showarrow: false, font: { size: 11, color: FONT_COLOR },
+            bgcolor: "rgba(255,255,255,0.9)", bordercolor: GRID, borderwidth: 1, borderpad: 3,
+          }]);
+        }
       }
       const traces = [
         { x: daily.map((r) => r.date), y: daily.map((r) => r.value), name: `일별 ${metricLabel}`,
