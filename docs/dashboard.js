@@ -132,18 +132,33 @@
       return { channel, metric, actual_cumulative: actual, annual_target: target,
         annual_progress_rate: rate, monthly_target: monthlyTarget, monthly_progress_rate: monthlyRate };
     }
+    // "채널별 핵심 KPI" 카드 전용 - annualRow()의 "연간 증가 목표" 치환 *이전* 원본값(예: 팔로워
+    // 달성 37,056 / 연간목표 43,000). build_data.py의 actual_cumulative_raw/annual_target_raw와 동일.
+    function rawRow(channel, metric, actual, target) {
+      const rate = target ? actual / target : null;
+      return { actual_cumulative_raw: actual, annual_target_raw: target, annual_progress_rate_raw: rate };
+    }
     const out = [];
     for (let r = 1; r <= 8; r++) {
       const vals = rowValues(rowsKPI, r);
       const channel = vals[1];
       if (channel !== "인스타그램" && channel !== "유튜브") continue;
       const stockMetric = channel === "인스타그램" ? "팔로워" : "구독자";
-      out.push(annualRow(channel, stockMetric, num(vals[2]), num(vals[4]), num(vals[5]), num(vals[6]), num(vals[7])));
+      out.push(Object.assign(
+        annualRow(channel, stockMetric, num(vals[2]), num(vals[4]), num(vals[5]), num(vals[6]), num(vals[7])),
+        rawRow(channel, stockMetric, num(vals[2]), num(vals[4])),
+      ));
       if (num(vals[8]) !== null) {
-        out.push(annualRow(channel, "인게이지먼트", num(vals[8]), num(vals[10]), num(vals[11]), num(vals[12]), num(vals[13])));
+        out.push(Object.assign(
+          annualRow(channel, "인게이지먼트", num(vals[8]), num(vals[10]), num(vals[11]), num(vals[12]), num(vals[13])),
+          rawRow(channel, "인게이지먼트", num(vals[8]), num(vals[10])),
+        ));
       }
       if (num(vals[14]) !== null) {
-        out.push(annualRow(channel, "조회수", num(vals[14]), num(vals[16]), num(vals[17]), num(vals[18]), num(vals[19])));
+        out.push(Object.assign(
+          annualRow(channel, "조회수", num(vals[14]), num(vals[16]), num(vals[17]), num(vals[18]), num(vals[19])),
+          rawRow(channel, "조회수", num(vals[14]), num(vals[16])),
+        ));
       }
     }
     return out;
@@ -448,14 +463,15 @@
   function renderKpiCards(annual) {
     let html = "";
     annual.forEach((row) => {
-      const rate = row.annual_progress_rate;
+      // "채널별 핵심 KPI" 카드는 원본(raw) 달성/연간목표 기준 - build_data.py 쪽 주석 참고.
+      const rate = row.annual_progress_rate_raw;
       const color = rate >= 0.95 ? C_GOOD : rate >= 0.8 ? C_WARN : C_BAD;
       const icon = rate >= 0.95 ? "🟢" : rate >= 0.8 ? "🟡" : "🔴";
       html += `
       <div class="kpi-card">
         <div class="kpi-label">${row.channel} · ${row.metric}</div>
-        <div class="kpi-value">${fmt(row.actual_cumulative)}</div>
-        <div class="kpi-target">연간 목표 ${fmt(row.annual_target)}</div>
+        <div class="kpi-value">${fmt(row.actual_cumulative_raw)}</div>
+        <div class="kpi-target">연간 목표 ${fmt(row.annual_target_raw)}</div>
         <div class="kpi-rate" style="color:${color}">${icon} ${pct(rate, 1)}</div>
         <div class="kpi-sub">월간 목표 대비 ${pct(row.monthly_progress_rate, 0)}</div>
         <div class="kpi-bar-track"><div class="kpi-bar-fill" style="width:${Math.min(rate || 0, 1) * 100}%;background:${color}"></div></div>
@@ -1368,7 +1384,7 @@
           populateDiagMonthFilter();
           applyDiagMonthFilter();
           document.getElementById("revertBtn").hidden = false;
-          document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (업로드한 데이터 기준)";
+          document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI (업로드한 데이터 기준)";
           showStatus(`✅ "${file.name}" 데이터로 이 브라우저에서만 갱신했습니다. 진단·처방 문구는 자동 생성된 일반 분석입니다
             (새로고침하면 원본으로 돌아가고, 다른 방문자에게는 공유되지 않습니다). 실제 공개 대시보드를 갱신하려면
             로컬에서 <code>publish_to_github.bat</code>을 실행하세요.`, "ok");
@@ -1391,7 +1407,7 @@
       diagMonthFilterDefaultSet = false; // 원본 데이터 기준 최신월로 기본 선택값을 다시 잡는다
       populateDiagMonthFilter();
       applyDiagMonthFilter();
-      document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI 스냅샷 (2026년 08월 기준)";
+      document.getElementById("kpiSnapshotTitle").textContent = "채널별 핵심 KPI";
       document.getElementById("revertBtn").hidden = true;
       showStatus("↩ 원본 데이터로 되돌렸습니다.", "ok");
     });
