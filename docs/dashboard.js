@@ -425,7 +425,7 @@
   // ---------------------------------------------------------------------
   // 차트 렌더링 (build_static_site.py의 Plotly 차트 로직을 그대로 옮김)
   // ---------------------------------------------------------------------
-  function styleFig(height, title, monthXaxis) {
+  function styleFig(height, title, monthXaxis, secondaryY) {
     // legend.yref를 안 주면 기본값 "paper"가 되는데, Plotly에서 "paper"는 전체 캔버스가 아니라
     // margin을 뺀 "안쪽 플롯 영역" 기준 좌표다 — 즉 y=0.90은 그 플롯 영역 높이의 90% 지점(위에서
     // 10% 내려온 곳)이라서, 데이터(막대/선)가 축 위쪽까지 올라오면 범례와 겹쳐버린다(실측으로 확인:
@@ -449,6 +449,7 @@
       yaxis: { showgrid: true, gridcolor: GRID, zeroline: false, automargin: true },
     };
     if (title) layout.title = { text: title, x: 0.01, xanchor: "left", y: 0.98, yanchor: "top" };
+    if (secondaryY) layout.yaxis2 = { overlaying: "y", side: "right", showgrid: false, zeroline: false, automargin: true };
     return layout;
   }
   // responsive:true - 컨테이너 크기가 바뀌면(탭 전환, 창 크기 조절 등) ResizeObserver로 항상 다시 맞춤.
@@ -490,9 +491,16 @@
     order.forEach(({ channel, metric, color, id }) => {
       const lad = filterSorted(tables.ladder, (d) => d.channel === channel && d.metric === metric);
       const act = filterSorted(tables.actual, (d) => d.channel === channel && d.metric === metric && d.month !== "2025_baseline");
+      const isStock = metric === "팔로워" || metric === "구독자";
+      // 팔로워/구독자는 "누적 실적" 선을 절대치(actual_value - 시트 "실적(누적)" 행과 동일)로 표시 -
+      // 목표(누적목표, 증가목표 기준 작은 스케일)와 스케일이 달라 보조축에 그린다. build_static_site.py 동일 로직.
       const traceBar = { x: lad.map((d) => d.month), y: lad.map((d) => d.target_cumulative), name: "누적 목표", type: "bar", marker: { color: GRID, line: { width: 0 } } };
-      const traceLine = { x: act.map((d) => d.month), y: act.map((d) => d.actual_cumulative), name: "누적 실적", mode: "lines+markers", line: { color: color, width: 3 }, marker: { size: 8 } };
-      Plotly.react(id, [traceBar, traceLine], styleFig(320, `${channel} · ${metric}`, true), PCFG);
+      const traceLine = {
+        x: act.map((d) => d.month), y: act.map((d) => (isStock ? d.actual_value : d.actual_cumulative)),
+        name: "누적 실적", mode: "lines+markers", line: { color: color, width: 3 }, marker: { size: 8 },
+      };
+      if (isStock) traceLine.yaxis = "y2";
+      Plotly.react(id, [traceBar, traceLine], styleFig(320, `${channel} · ${metric}`, true, isStock), PCFG);
     });
   }
 
