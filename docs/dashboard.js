@@ -762,13 +762,14 @@
   function renderRankChart(annual) {
     const ranked = sortByKey(annual, (r) => r.annual_progress_rate);
     const colors = ranked.map((r) => (r.annual_progress_rate < 0.8 ? C_BAD : r.annual_progress_rate < 0.95 ? C_WARN : C_GOOD));
+    const rankLabels = ranked.map((r) => `${pct(r.annual_progress_rate, 0)} (${fmt(r.actual_cumulative)}/${fmt(r.annual_target)})`);
     const trace = {
       x: ranked.map((r) => r.annual_progress_rate * 100), y: ranked.map((r) => `${r.channel} · ${r.metric}`),
       type: "bar", orientation: "h", marker: { color: colors },
-      text: ranked.map((r) => pct(r.annual_progress_rate, 0)), textposition: "outside",
-      hovertemplate: "%{y}: %{x:.0f}%<extra></extra>",
+      text: rankLabels, textposition: "outside",
+      hovertemplate: "%{y}: %{text}<extra></extra>",
     };
-    const layout = styleFig(Math.max(220, 50 + ranked.length * 45), "연간 목표 달성률 순위 (낮은 순)", false);
+    const layout = styleFig(Math.max(220, 50 + ranked.length * 45), "연간 목표 달성률 순위", false);
     layout.shapes = [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: C_TARGET } }];
     // x축 하한을 0으로 고정하면 인스타그램 팔로워처럼 달성률이 마이너스인 지표의 막대가 안 보이는
     // 버그가 있었음(막대가 x<0으로 그려지는데 축이 0부터 시작해 잘림) - build_static_site.py와 동일하게 수정.
@@ -779,6 +780,9 @@
     // 헤더로 따로 보여줘서 아래 "53%" 텍스트와 겹쳐 헷갈렸음(실측 확인) - closest로 되돌리고
     // 위 hovertemplate로 깔끔하게 표시. build_static_site.py 동일 로직.
     layout.hovermode = "closest";
+    // 절대 수치까지 넣은 라벨("109% (1,312,918/1,200,000)")이 길어져서 기본 오른쪽 여백으로는 다
+    // 못 들어가고 잘렸음 - 오른쪽 여백을 넉넉히 늘려서 가장 긴 라벨도 안 잘리게 함(build_static_site.py 동일).
+    layout.margin = Object.assign({}, layout.margin, { r: 170 });
     Plotly.react("rankchart", [trace], layout, PCFG);
   }
 
@@ -1365,53 +1369,7 @@
     });
   }
 
-  // ---------------------------------------------------------------------
-  // 화면 잠금 (로그인 가림막)
-  // 주의: 이건 "진짜 서버 인증"이 아니라 링크를 몰라도 캐주얼하게 못 열게 막는 수준의 가림막이다.
-  // 페이지 소스나 저장소 원본 파일(docs/index.html, dashboard.js)을 직접 열면 그대로 우회된다 —
-  // 정적 사이트(GitHub Pages)라 서버가 없어서 이 이상의 진짜 인증은 불가능하고, 담당자도 이 한계를
-  // 인지한 상태에서 "그래도 캐주얼한 접근 정도는 막아달라"고 선택한 방식이다.
-  // 비밀번호를 코드에 평문으로 남기지 않도록 "아이디:비밀번호" 문자열의 SHA-256 해시만 비교한다.
-  // ---------------------------------------------------------------------
-  const LOGIN_HASH = "c9e7662318ac188bd0ab007fa7d9611396601aa7ef30086ac1beb706f4a87b26"; // nanum:wylie
-  const LOGIN_STORAGE_KEY = "cj_nanum_unlocked_v1";
-
-  async function sha256Hex(text) {
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
-  }
-
-  function initLoginGate() {
-    const gate = document.getElementById("loginGate");
-    const form = document.getElementById("loginForm");
-    if (!gate || !form) return;
-
-    let unlocked = false;
-    try { unlocked = localStorage.getItem(LOGIN_STORAGE_KEY) === "1"; } catch (e) { /* 저장소 접근 불가 시 무시 */ }
-    if (unlocked) { gate.hidden = true; return; }
-
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-      const id = document.getElementById("loginId").value.trim();
-      const pw = document.getElementById("loginPw").value;
-      const errEl = document.getElementById("loginError");
-      sha256Hex(`${id}:${pw}`)
-        .catch(function () { return ""; }) // crypto.subtle을 못 쓰는 환경 등 — 그냥 오답 처리
-        .then(function (hash) {
-          if (hash && hash === LOGIN_HASH) {
-            gate.hidden = true;
-            errEl.hidden = true;
-            try { localStorage.setItem(LOGIN_STORAGE_KEY, "1"); } catch (ex) { /* 무시 */ }
-          } else {
-            errEl.hidden = false;
-            document.getElementById("loginPw").value = "";
-          }
-        });
-    });
-  }
-
   async function init() {
-    initLoginGate();
     // SHEET_API_URL이 설정돼 있으면, 정적 페이지에 미리 그려둔 내용 대신 구글시트에서 방금 읽어온
     // 최신 내용으로 먼저 갈아끼운 뒤(재배포 없이도 항상 최신) 편집 관련 초기화를 진행한다. 실패하면
     // (네트워크 오류 등) 그냥 기존 정적 내용을 그대로 쓴다.
