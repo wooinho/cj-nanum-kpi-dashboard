@@ -457,10 +457,13 @@
       // automargin: true - margin.l/b를 고정 10px로 두면 "40k" 같은 축 눈금 라벨이 여백보다 넓어질 때
       // 왼쪽이 잘려 숫자 없이 단위(k)만 보이는 문제가 생긴다(실측으로 확인됨). automargin을 주면 Plotly가
       // 실제 라벨 크기에 맞춰 여백을 알아서 늘려준다.
-      yaxis: { showgrid: true, gridcolor: GRID, zeroline: false, automargin: true },
+      // hoverformat: ",.0f" - Plotly 기본값은 호버에도 SI 접두어("750k", "1.290114M"처럼 반올림 안 된
+      // 소수까지)를 써서 정확한 수치를 알기 어렵다는 피드백으로, 모든 차트 공통으로 콤마 표기 정수로
+      // 고정(개별 차트에서 hovertemplate을 따로 지정한 경우는 그쪽이 우선 적용됨).
+      yaxis: { showgrid: true, gridcolor: GRID, zeroline: false, automargin: true, hoverformat: ",.0f" },
     };
     if (title) layout.title = { text: title, x: 0.01, xanchor: "left", y: 0.98, yanchor: "top" };
-    if (secondaryY) layout.yaxis2 = { overlaying: "y", side: "right", showgrid: false, zeroline: false, automargin: true };
+    if (secondaryY) layout.yaxis2 = { overlaying: "y", side: "right", showgrid: false, zeroline: false, automargin: true, hoverformat: ",.0f" };
     return layout;
   }
   // responsive:true - 컨테이너 크기가 바뀌면(탭 전환, 창 크기 조절 등) ResizeObserver로 항상 다시 맞춤.
