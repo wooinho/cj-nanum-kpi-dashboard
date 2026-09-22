@@ -769,8 +769,11 @@
     };
     const layout = styleFig(Math.max(220, 50 + ranked.length * 45), "연간 목표 달성률 순위 (낮은 순)", false);
     layout.shapes = [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: C_TARGET } }];
+    // x축 하한을 0으로 고정하면 인스타그램 팔로워처럼 달성률이 마이너스인 지표의 막대가 안 보이는
+    // 버그가 있었음(막대가 x<0으로 그려지는데 축이 0부터 시작해 잘림) - build_static_site.py와 동일하게 수정.
+    const minVal = Math.min(0, Math.min(...ranked.map((r) => r.annual_progress_rate * 100)) * 1.1);
     const maxVal = Math.max(120, Math.max(...ranked.map((r) => r.annual_progress_rate * 100)) * 1.1);
-    layout.xaxis = Object.assign({}, layout.xaxis, { range: [0, maxVal] });
+    layout.xaxis = Object.assign({}, layout.xaxis, { range: [minVal, maxVal] });
     Plotly.react("rankchart", [trace], layout, PCFG);
   }
 
