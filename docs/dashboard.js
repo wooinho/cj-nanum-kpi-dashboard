@@ -766,6 +766,7 @@
       x: ranked.map((r) => r.annual_progress_rate * 100), y: ranked.map((r) => `${r.channel} · ${r.metric}`),
       type: "bar", orientation: "h", marker: { color: colors },
       text: ranked.map((r) => pct(r.annual_progress_rate, 0)), textposition: "outside",
+      hovertemplate: "%{y}: %{x:.0f}%<extra></extra>",
     };
     const layout = styleFig(Math.max(220, 50 + ranked.length * 45), "연간 목표 달성률 순위 (낮은 순)", false);
     layout.shapes = [{ type: "line", x0: 100, x1: 100, y0: 0, y1: 1, yref: "paper", line: { dash: "dash", color: C_TARGET } }];
@@ -774,6 +775,10 @@
     const minVal = Math.min(0, Math.min(...ranked.map((r) => r.annual_progress_rate * 100)) * 1.1);
     const maxVal = Math.max(120, Math.max(...ranked.map((r) => r.annual_progress_rate * 100)) * 1.1);
     layout.xaxis = Object.assign({}, layout.xaxis, { range: [minVal, maxVal] });
+    // styleFig()의 기본 hovermode="x unified"는 이 차트에서 "52.83103"처럼 반올림 안 된 값을 굵은
+    // 헤더로 따로 보여줘서 아래 "53%" 텍스트와 겹쳐 헷갈렸음(실측 확인) - closest로 되돌리고
+    // 위 hovertemplate로 깔끔하게 표시. build_static_site.py 동일 로직.
+    layout.hovermode = "closest";
     Plotly.react("rankchart", [trace], layout, PCFG);
   }
 
