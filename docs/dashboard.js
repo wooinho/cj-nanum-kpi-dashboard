@@ -648,23 +648,21 @@
 
   function monthlyRateAnnotations_(tables, channel, metric, daily) {
     // 이 채널×지표의, daily(일별 시리즈)에 걸쳐 있는 각 달의 "연간 목표 대비 달성률"을 그 달 마지막
-    // 데이터 포인트 위에 라벨로 붙인다. 목표는 그 달의 캐스케이드 지점(월별로 계속 바뀌는 값)이 아니라
-    // annual(고정된 연간 목표, annual_target)을 그대로 쓴다 - "월별"이 아니라 "연간" 목표 대비로
-    // 표시해달라는 요청(2026-09-27) 반영. 실적은 actual(그 달까지의 누적 실적 - 팔로워/구독자는 연초
-    // 대비 순증가분 기준)을 개요 탭 캐스케이드 차트/진단 순위 차트와 같은 기준으로 비교한다.
+    // 데이터 포인트 위에 라벨로 붙인다. 실적/목표 둘 다 이 차트의 선(절대치)·"연간 목표" 배지와 같은
+    // 원본(raw) 스케일로 통일한다 - 예전엔 실적을 순증가분(actual_cumulative)으로, 목표는 이미 raw
+    // (annual_target_raw)로 서로 다른 기준을 섞어 써서 헷갈린다는 피드백(2026-09-28)을 받음. 실적을
+    // 그 달 마지막 날 라인 값(절대치) 그대로 쓰면 개요 탭 KPI 카드의 퍼센트와도 일치해서 더 명확하다.
     const targetRow = (tables.annual || []).find((r) => r.channel === channel && r.metric === metric);
-    if (!targetRow || !targetRow.annual_target) return [];
-    const target = targetRow.annual_target;
+    if (!targetRow || !targetRow.annual_target_raw) return [];
+    const target = targetRow.annual_target_raw;
     const months = Array.from(new Set(daily.map((r) => r.date.slice(0, 7)))).sort();
     const annotations = [];
     months.forEach((month) => {
-      const aRow = (tables.actual || []).find((r) => r.channel === channel && r.metric === metric && r.month === month);
-      if (!aRow) return;
-      const rate = (aRow.actual_cumulative / target) * 100;
-      const icon = rate >= 95 ? "🟢" : rate >= 80 ? "🟡" : "🔴";
       const monthDays = daily.filter((r) => r.date.slice(0, 7) === month);
       if (!monthDays.length) return;
       const last = monthDays[monthDays.length - 1];
+      const rate = (last.value / target) * 100;
+      const icon = rate >= 95 ? "🟢" : rate >= 80 ? "🟡" : "🔴";
       annotations.push({
         x: last.date, y: last.value, xref: "x", yref: "y",
         text: `${icon} 목표대비 ${rate.toFixed(0)}% (목표 ${target.toLocaleString("en-US", { maximumFractionDigits: 0 })})`,
