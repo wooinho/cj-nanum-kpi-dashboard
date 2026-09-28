@@ -665,7 +665,7 @@
       const icon = rate >= 95 ? "🟢" : rate >= 80 ? "🟡" : "🔴";
       annotations.push({
         x: last.date, y: last.value, xref: "x", yref: "y",
-        text: `${icon} 목표대비 ${rate.toFixed(0)}% (목표 ${target.toLocaleString("en-US", { maximumFractionDigits: 0 })})`,
+        text: `${icon} 목표대비 ${rate.toFixed(0)}%`,
         showarrow: true, arrowhead: 0, arrowcolor: GRID,
         ax: 0, ay: -32, font: { size: 11, color: FONT_COLOR }, bgcolor: "rgba(255,255,255,0.85)",
         bordercolor: GRID, borderwidth: 1, borderpad: 3,
